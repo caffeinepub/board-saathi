@@ -1,0 +1,55 @@
+{
+  "kind": "implementation_plan",
+  "version": "1.0",
+  "title": "Revert Version 10 Visual Changes",
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "summary": "Revert all frontend visual/styling changes introduced in Version 10, including sidebar background colour, 'Made by DEV' badge styling, widget colour overrides, and other cosmetic modifications",
+      "acceptanceCriteria": [
+        "Sidebar colour is restored to the value it had before Version 10 changes.",
+        "The 'Made by DEV' badge styling/colours match the pre-Version-10 state.",
+        "All widget colours (calendar widget, streak card, quote card, etc.) are restored to their pre-Version-10 appearance.",
+        "No other layout or functional changes are introduced — only cosmetic/colour reversal.",
+        "The app renders without console errors after the revert."
+      ],
+      "file_operations": [
+        {
+          "path": "frontend/src/components/Layout.tsx",
+          "operation": "modify",
+          "description": "Revert sidebar background colour changes to the pre-Version-10 state. Restore original sidebar styling including background colors, text colors, and any hover/active state styling that was modified in Version 10."
+        },
+        {
+          "path": "frontend/src/components/MadeByDevBadge.tsx",
+          "operation": "modify",
+          "description": "Revert 'Made by DEV' badge styling and colours to match the pre-Version-10 appearance. Restore original text color, background color, border styling, and any other visual properties that were changed in Version 10."
+        },
+        {
+          "path": "frontend/src/components/CalendarWidget.tsx",
+          "operation": "modify",
+          "description": "Revert calendar widget colour overrides to the pre-Version-10 state. Restore original background colors, text colors, border styling, and any accent colors that were modified in Version 10."
+        },
+        {
+          "path": "frontend/src/components/StreakCard.tsx",
+          "operation": "modify",
+          "description": "Revert streak card styling to the pre-Version-10 appearance. Restore original background colors, gradient styling, text colors, badge colors, and any other visual properties that were changed in Version 10."
+        },
+        {
+          "path": "frontend/src/components/QuoteOfTheDayCard.tsx",
+          "operation": "modify",
+          "description": "Revert quote card styling to the pre-Version-10 appearance. Restore original background colors, gradient styling, text colors, and any other visual properties that were modified in Version 10."
+        },
+        {
+          "path": "frontend/src/index.css",
+          "operation": "modify",
+          "description": "Revert any global CSS custom property changes, color variable overrides, or theme token modifications introduced in Version 10. Restore original values for sidebar, chart, destructive, and any other color variables that were changed."
+        },
+        {
+          "path": "frontend/tailwind.config.js",
+          "operation": "modify",
+          "description": "Revert any Tailwind configuration changes made in Version 10, including color token modifications, theme overrides, or custom color definitions. Restore the original OKLCH-based color tokens and theme settings."
+        }
+      ]
+    }
+  ]
+}

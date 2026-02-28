@@ -1,0 +1,40 @@
+{
+  "kind": "build_request",
+  "title": "Revert recent widget colour and visual changes",
+  "priority": "normal",
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "text": "Revert all frontend visual/styling changes introduced in the most recent session (Version 10), including: sidebar background colour changes, 'Made by DEV' badge styling/colours, any widget colour overrides, and any other cosmetic modifications made in that session — restoring them to their prior state.",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-4"
+        ],
+        "quotes": [
+          "Undo all changes only you have done now only of now like widget colour etc ."
+        ]
+      },
+      "acceptanceCriteria": [
+        "Sidebar colour is restored to the value it had before Version 10 changes.",
+        "The 'Made by DEV' badge styling/colours match the pre-Version-10 state.",
+        "All widget colours (calendar widget, streak card, quote card, etc.) are restored to their pre-Version-10 appearance.",
+        "No other layout or functional changes are introduced — only cosmetic/colour reversal.",
+        "The app renders without console errors after the revert."
+      ]
+    }
+  ],
+  "constraints": [
+    "Only revert cosmetic/colour/styling changes introduced in Version 10 — do not touch backend logic, data models, or functional features.",
+    "Do not modify any immutable frontend paths: useInternetIdentity.ts, useActor.ts, main.tsx, or components/ui."
+  ],
+  "nonGoals": [
+    "Reverting functional features added in Version 10 (subject target reminders, pro button, calendar icon).",
+    "Changing any backend code.",
+    "Introducing new visual styles or redesigns."
+  ],
+  "imageRequirements": {
+    "required": [],
+    "edits": []
+  }
+}
