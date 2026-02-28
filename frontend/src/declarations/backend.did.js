@@ -109,7 +109,6 @@ export const Question = IDL.Record({
 export const Reminder = IDL.Record({
   'id' : IDL.Nat,
   'text' : IDL.Text,
-  'targetId' : IDL.Opt(IDL.Nat),
   'dateTime' : Time,
 });
 export const StudyStreak = IDL.Record({
@@ -171,7 +170,7 @@ export const idlService = IDL.Service({
       [IDL.Nat],
       [],
     ),
-  'addReminder' : IDL.Func([IDL.Text, Time, IDL.Opt(IDL.Nat)], [IDL.Nat], []),
+  'addReminder' : IDL.Func([IDL.Text, Time], [IDL.Nat], []),
   'addSubject' : IDL.Func([IDL.Text], [IDL.Nat], []),
   'addTarget' : IDL.Func([IDL.Text, IDL.Text, Time], [IDL.Nat], []),
   'adminListUsers' : IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
@@ -361,7 +360,6 @@ export const idlFactory = ({ IDL }) => {
   const Reminder = IDL.Record({
     'id' : IDL.Nat,
     'text' : IDL.Text,
-    'targetId' : IDL.Opt(IDL.Nat),
     'dateTime' : Time,
   });
   const StudyStreak = IDL.Record({
@@ -423,7 +421,7 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Nat],
         [],
       ),
-    'addReminder' : IDL.Func([IDL.Text, Time, IDL.Opt(IDL.Nat)], [IDL.Nat], []),
+    'addReminder' : IDL.Func([IDL.Text, Time], [IDL.Nat], []),
     'addSubject' : IDL.Func([IDL.Text], [IDL.Nat], []),
     'addTarget' : IDL.Func([IDL.Text, IDL.Text, Time], [IDL.Nat], []),
     'adminListUsers' : IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),

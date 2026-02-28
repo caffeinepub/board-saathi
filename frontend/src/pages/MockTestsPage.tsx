@@ -1,9 +1,16 @@
 import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { Plus, Play, Trash2, BarChart2, ClipboardList } from 'lucide-react';
+import { Plus, Play, Trash2, FileText, Loader2, ClipboardList } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useGetMockTests, useGetSubjects, useGetTestAttempts, useDeleteMockTest } from '../hooks/useQueries';
-import type { MockTest, TestAttempt } from '../backend';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { toast } from 'sonner';
+import {
+  useGetMockTests,
+  useDeleteMockTest,
+  useGetSubjects,
+  useGetTestAttempts,
+} from '../hooks/useQueries';
 
 export default function MockTestsPage() {
   const navigate = useNavigate();
@@ -12,120 +19,121 @@ export default function MockTestsPage() {
   const { data: attempts = [] } = useGetTestAttempts();
   const deleteMockTest = useDeleteMockTest();
 
-  const getSubjectName = (subjectId: bigint): string => {
-    return subjects.find((s) => s.id === subjectId)?.name ?? 'Unknown';
+  const getSubjectName = (subjectId: number) => {
+    return subjects.find(s => s.id === subjectId)?.name ?? 'Unknown';
   };
 
-  const getAttemptsForTest = (testId: bigint): TestAttempt[] => {
-    return attempts.filter((a) => a.testId === testId);
+  const getAttemptsForTest = (testId: number) => {
+    return attempts.filter(a => a.testId === testId);
   };
 
-  const getBestScore = (testId: bigint): number => {
+  const getBestScore = (testId: number) => {
     const testAttempts = getAttemptsForTest(testId);
-    if (testAttempts.length === 0) return 0;
-    return Math.max(...testAttempts.map((a) => Number(a.report.percentage)));
+    if (testAttempts.length === 0) return null;
+    return Math.max(...testAttempts.map(a => a.report.percentage));
   };
 
-  const handleViewReport = (testId: bigint) => {
-    navigate({ to: '/mock-tests/$testId/report', params: { testId: String(testId) } });
+  const handleDelete = async (testId: number) => {
+    try {
+      await deleteMockTest.mutateAsync(testId);
+      toast.success('Test deleted');
+    } catch {
+      toast.error('Failed to delete test');
+    }
   };
 
-  const handleDelete = async (testId: bigint) => {
-    await deleteMockTest.mutateAsync(testId);
+  const handleViewReport = (testId: number) => {
+    navigate({ to: '/mock-tests/$testId/report', params: { testId: testId.toString() } });
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 md:p-6 max-w-3xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Mock Tests</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Practice with custom MCQ tests</p>
+          <h1 className="text-2xl font-bold">Mock Tests</h1>
+          <p className="text-muted-foreground text-sm mt-1">{tests.length} test{tests.length !== 1 ? 's' : ''} created</p>
         </div>
-        <Button
-          onClick={() => navigate({ to: '/mock-tests/create' })}
-          className="bg-teal-600 hover:bg-teal-700 text-white"
-          size="sm"
-        >
-          <Plus size={14} className="mr-1" />
-          Create Test
+        <Button onClick={() => navigate({ to: '/mock-tests/create' })} className="gap-2">
+          <Plus className="w-4 h-4" />Create Test
         </Button>
       </div>
 
-      {isLoading ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-24 bg-gray-100 rounded-xl animate-pulse" />
-          ))}
-        </div>
-      ) : tests.length === 0 ? (
+      {tests.length === 0 ? (
         <div className="text-center py-16">
-          <div className="w-16 h-16 bg-teal-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <ClipboardList size={32} className="text-teal-400" />
-          </div>
-          <h3 className="text-lg font-semibold text-gray-700 mb-2">No mock tests yet</h3>
-          <p className="text-sm text-gray-400">Create your first mock test to start practicing.</p>
+          <ClipboardList className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+          <h3 className="text-lg font-semibold mb-2">No mock tests yet</h3>
+          <p className="text-muted-foreground mb-4">Create your first mock test to practice</p>
+          <Button onClick={() => navigate({ to: '/mock-tests/create' })} className="gap-2">
+            <Plus className="w-4 h-4" />Create Test
+          </Button>
         </div>
       ) : (
-        <div className="space-y-3">
-          {tests.map((test: MockTest) => {
+        <div className="space-y-4">
+          {tests.map(test => {
             const testAttempts = getAttemptsForTest(test.id);
             const bestScore = getBestScore(test.id);
             return (
-              <div
-                key={String(test.id)}
-                className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm"
-              >
-                <div className="flex items-start justify-between gap-3 mb-3">
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-sm font-semibold text-gray-800">{test.name}</h3>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {getSubjectName(test.subjectId)} · {test.questions.length} questions
-                    </p>
+              <Card key={test.id} className="hover:shadow-md transition-shadow">
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-foreground">{test.name}</h3>
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <Badge variant="secondary" className="text-xs">
+                          {getSubjectName(test.subjectId)}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {test.questions.length} question{test.questions.length !== 1 ? 's' : ''}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {testAttempts.length} attempt{testAttempts.length !== 1 ? 's' : ''}
+                        </span>
+                        {bestScore !== null && (
+                          <Badge variant="outline" className="text-xs">
+                            Best: {bestScore}%
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {testAttempts.length > 0 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleViewReport(test.id)}
+                          className="gap-1"
+                        >
+                          <FileText className="w-3.5 h-3.5" />Report
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        onClick={() => navigate({ to: '/mock-tests/$testId/attempt', params: { testId: test.id.toString() } })}
+                        className="gap-1"
+                      >
+                        <Play className="w-3.5 h-3.5" />Attempt
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive hover:text-destructive"
+                        onClick={() => handleDelete(test.id)}
+                        disabled={deleteMockTest.isPending}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    {testAttempts.length > 0 && (
-                      <span className="text-xs bg-teal-50 text-teal-700 px-2 py-0.5 rounded-full font-medium">
-                        Best: {bestScore}%
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    onClick={() => navigate({ to: '/mock-tests/$testId/attempt', params: { testId: String(test.id) } })}
-                    className="bg-teal-600 hover:bg-teal-700 text-white flex-1"
-                  >
-                    <Play size={14} className="mr-1" />
-                    {testAttempts.length > 0 ? 'Retry' : 'Start'}
-                  </Button>
-                  {testAttempts.length > 0 && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleViewReport(test.id)}
-                      className="border-teal-200 text-teal-700 hover:bg-teal-50"
-                    >
-                      <BarChart2 size={14} className="mr-1" />
-                      Report
-                    </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleDelete(test.id)}
-                    className="border-red-200 text-red-500 hover:bg-red-50"
-                    disabled={deleteMockTest.isPending}
-                  >
-                    <Trash2 size={14} />
-                  </Button>
-                </div>
-                {testAttempts.length > 0 && (
-                  <p className="text-xs text-gray-400 mt-2">
-                    {testAttempts.length} attempt{testAttempts.length !== 1 ? 's' : ''}
-                  </p>
-                )}
-              </div>
+                </CardContent>
+              </Card>
             );
           })}
         </div>

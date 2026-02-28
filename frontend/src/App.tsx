@@ -1,8 +1,7 @@
 import { RouterProvider, createRouter, createRoute, createRootRoute, Outlet, redirect } from '@tanstack/react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ThemeProvider } from 'next-themes';
 import { Toaster } from '@/components/ui/sonner';
-
+import { ThemeProvider } from 'next-themes';
 import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
 import Dashboard from './pages/Dashboard';
@@ -18,154 +17,167 @@ import ProgressPage from './pages/ProgressPage';
 import RemindersPage from './pages/RemindersPage';
 import TargetsPage from './pages/TargetsPage';
 import ProfilePage from './pages/ProfilePage';
-import ProUpgradePage from './pages/ProUpgradePage';
+import FlashcardsPage from './pages/FlashcardsPage';
+import RevisionPage from './pages/RevisionPage';
+import MyAchievementsPage from './pages/MyAchievementsPage';
+import AboutPage from './pages/AboutPage';
+import ParentDashboard from './pages/ParentDashboard';
+import { getCurrentUserId, getParentSession } from './utils/localStorageService';
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: 1,
-      staleTime: 30_000,
+      staleTime: 0,
+      retry: false,
     },
   },
 });
 
-// Root route
+// Auth guard for students
+function requireAuth() {
+  const userId = getCurrentUserId();
+  if (!userId) {
+    throw redirect({ to: '/login' });
+  }
+}
+
+// Auth guard for parent portal
+function requireParentAuth() {
+  const session = getParentSession();
+  if (!session) {
+    throw redirect({ to: '/login' });
+  }
+}
+
 const rootRoute = createRootRoute({
   component: () => <Outlet />,
 });
 
-// Login route
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',
   component: LoginPage,
 });
 
-// Layout route (authenticated)
+const parentDashboardRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/parent-dashboard',
+  beforeLoad: requireParentAuth,
+  component: ParentDashboard,
+});
+
 const layoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: 'layout',
+  beforeLoad: requireAuth,
   component: Layout,
-  beforeLoad: () => {
-    // Basic auth check - redirect to login if no user stored
-    const stored = localStorage.getItem('board_saathi_user');
-    if (!stored) {
-      throw redirect({ to: '/login' });
-    }
-  },
 });
 
-// Dashboard
 const dashboardRoute = createRoute({
   getParentRoute: () => layoutRoute,
-  path: '/dashboard',
+  path: '/',
   component: Dashboard,
 });
 
-// Planner
 const plannerRoute = createRoute({
   getParentRoute: () => layoutRoute,
   path: '/planner',
   component: PlannerPage,
 });
 
-// Subjects
 const subjectsRoute = createRoute({
   getParentRoute: () => layoutRoute,
   path: '/subjects',
   component: SubjectsPage,
 });
 
-// Chapters
 const chaptersRoute = createRoute({
   getParentRoute: () => layoutRoute,
   path: '/subjects/$subjectId',
   component: ChaptersPage,
 });
 
-// Question Bank
 const questionBankRoute = createRoute({
   getParentRoute: () => layoutRoute,
   path: '/question-bank',
   component: QuestionBankPage,
 });
 
-// Mock Tests
 const mockTestsRoute = createRoute({
   getParentRoute: () => layoutRoute,
   path: '/mock-tests',
   component: MockTestsPage,
 });
 
-// Create Mock Test
 const createMockTestRoute = createRoute({
   getParentRoute: () => layoutRoute,
   path: '/mock-tests/create',
   component: CreateMockTestPage,
 });
 
-// Attempt Mock Test
 const attemptMockTestRoute = createRoute({
   getParentRoute: () => layoutRoute,
   path: '/mock-tests/$testId/attempt',
   component: AttemptMockTestPage,
 });
 
-// Test Report
 const testReportRoute = createRoute({
   getParentRoute: () => layoutRoute,
   path: '/mock-tests/$testId/report',
   component: TestReportPage,
 });
 
-// Progress
 const progressRoute = createRoute({
   getParentRoute: () => layoutRoute,
   path: '/progress',
   component: ProgressPage,
 });
 
-// Reminders
 const remindersRoute = createRoute({
   getParentRoute: () => layoutRoute,
   path: '/reminders',
   component: RemindersPage,
 });
 
-// Targets
 const targetsRoute = createRoute({
   getParentRoute: () => layoutRoute,
   path: '/targets',
   component: TargetsPage,
 });
 
-// Profile
 const profileRoute = createRoute({
   getParentRoute: () => layoutRoute,
   path: '/profile',
   component: ProfilePage,
 });
 
-// Pro Upgrade
-const proRoute = createRoute({
+const flashcardsRoute = createRoute({
   getParentRoute: () => layoutRoute,
-  path: '/pro',
-  component: ProUpgradePage,
+  path: '/flashcards',
+  component: FlashcardsPage,
 });
 
-// Index redirect
-const indexRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/',
-  beforeLoad: () => {
-    throw redirect({ to: '/login' });
-  },
-  component: () => null,
+const revisionRoute = createRoute({
+  getParentRoute: () => layoutRoute,
+  path: '/revision',
+  component: RevisionPage,
+});
+
+const achievementsRoute = createRoute({
+  getParentRoute: () => layoutRoute,
+  path: '/achievements',
+  component: MyAchievementsPage,
+});
+
+const aboutRoute = createRoute({
+  getParentRoute: () => layoutRoute,
+  path: '/about',
+  component: AboutPage,
 });
 
 const routeTree = rootRoute.addChildren([
-  indexRoute,
   loginRoute,
+  parentDashboardRoute,
   layoutRoute.addChildren([
     dashboardRoute,
     plannerRoute,
@@ -180,7 +192,10 @@ const routeTree = rootRoute.addChildren([
     remindersRoute,
     targetsRoute,
     profileRoute,
-    proRoute,
+    flashcardsRoute,
+    revisionRoute,
+    achievementsRoute,
+    aboutRoute,
   ]),
 ]);
 
@@ -194,10 +209,10 @@ declare module '@tanstack/react-router' {
 
 export default function App() {
   return (
-    <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
+    <ThemeProvider attribute="class" defaultTheme="light">
       <QueryClientProvider client={queryClient}>
         <RouterProvider router={router} />
-        <Toaster />
+        <Toaster richColors position="top-right" />
       </QueryClientProvider>
     </ThemeProvider>
   );

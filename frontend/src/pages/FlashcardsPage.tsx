@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, RotateCcw, Shuffle, CheckCircle2, Trash2, Loader2, CreditCard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
@@ -15,27 +16,17 @@ import {
   useAddFlashcard,
   useMarkFlashcardLearned,
   useDeleteFlashcard,
+  LocalFlashcard,
 } from '../hooks/useQueries';
-import type { Flashcard } from '../backend';
 
-function FlashCard({
-  card,
-  onLearn,
-  onDelete,
-}: {
-  card: Flashcard;
-  onLearn: (learned: boolean) => void;
-  onDelete: () => void;
-}) {
+function FlashCard({ card, onLearn, onDelete }: { card: LocalFlashcard; onLearn: (learned: boolean) => void; onDelete: () => void }) {
   const [flipped, setFlipped] = useState(false);
 
   return (
     <div className="relative">
       <div
         className={`cursor-pointer rounded-xl border-2 transition-all min-h-[160px] flex flex-col ${
-          card.learned
-            ? 'border-green-300 bg-green-50/50 dark:bg-green-950/20'
-            : 'border-border hover:border-primary/50'
+          card.learned ? 'border-green-300 bg-green-50/50 dark:bg-green-950/20' : 'border-border hover:border-primary/50'
         }`}
         onClick={() => setFlipped(!flipped)}
       >
@@ -49,14 +40,9 @@ function FlashCard({
         </div>
         <div className="px-4 pb-3 flex items-center justify-between">
           <p className="text-xs text-muted-foreground flex items-center gap-1">
-            <RotateCcw className="w-3 h-3" />
-            Tap to flip
+            <RotateCcw className="w-3 h-3" />Tap to flip
           </p>
-          {card.learned && (
-            <Badge variant="secondary" className="text-xs">
-              Learned
-            </Badge>
-          )}
+          {card.learned && <Badge variant="secondary" className="text-xs">Learned</Badge>}
         </div>
       </div>
       <div className="flex gap-2 mt-2">
@@ -90,7 +76,7 @@ export default function FlashcardsPage() {
   const markLearned = useMarkFlashcardLearned();
   const deleteFlashcard = useDeleteFlashcard();
 
-  const [cards, setCards] = useState<Flashcard[]>([]);
+  const [cards, setCards] = useState<LocalFlashcard[]>([]);
   const [filterSubjectId, setFilterSubjectId] = useState<string>('all');
   const [addOpen, setAddOpen] = useState(false);
   const [front, setFront] = useState('');
@@ -101,26 +87,25 @@ export default function FlashcardsPage() {
   useEffect(() => {
     let filtered = [...allFlashcards];
     if (filterSubjectId !== 'all') {
-      const filterBig = BigInt(filterSubjectId);
-      filtered = filtered.filter((f) => f.subjectId === filterBig);
+      filtered = filtered.filter(f => f.subjectId === parseInt(filterSubjectId, 10));
     }
     setCards(filtered);
   }, [allFlashcards, filterSubjectId]);
 
-  const chaptersForSelected = allChapters.filter((c) =>
-    selectedSubjectId ? c.subjectId === BigInt(selectedSubjectId) : false
+  const chaptersForSelected = allChapters.filter(c =>
+    selectedSubjectId ? c.subjectId === parseInt(selectedSubjectId, 10) : false
   );
 
   const handleShuffle = () => {
-    setCards((prev) => [...prev].sort(() => Math.random() - 0.5));
+    setCards(prev => [...prev].sort(() => Math.random() - 0.5));
   };
 
-  const handleLearn = (cardId: bigint, chapterId: bigint, learned: boolean) => {
-    markLearned.mutate({ cardId, learned, chapterId });
+  const handleLearn = (cardId: number, learned: boolean) => {
+    markLearned.mutate({ cardId, learned });
   };
 
-  const handleDelete = (cardId: bigint, chapterId: bigint) => {
-    deleteFlashcard.mutate({ cardId, chapterId });
+  const handleDelete = (cardId: number) => {
+    deleteFlashcard.mutate(cardId);
   };
 
   const handleAdd = async () => {
@@ -138,8 +123,8 @@ export default function FlashcardsPage() {
     }
     try {
       await addFlashcard.mutateAsync({
-        chapterId: BigInt(selectedChapterId),
-        subjectId: BigInt(selectedSubjectId),
+        chapterId: parseInt(selectedChapterId, 10),
+        subjectId: parseInt(selectedSubjectId, 10),
         front: front.trim(),
         back: back.trim(),
       });
@@ -152,7 +137,7 @@ export default function FlashcardsPage() {
     }
   };
 
-  const learnedCount = cards.filter((c) => c.learned).length;
+  const learnedCount = cards.filter(c => c.learned).length;
 
   if (isLoading) {
     return (
@@ -173,12 +158,10 @@ export default function FlashcardsPage() {
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={handleShuffle} className="gap-1">
-            <Shuffle className="w-4 h-4" />
-            Shuffle
+            <Shuffle className="w-4 h-4" />Shuffle
           </Button>
           <Button onClick={() => setAddOpen(true)} className="gap-2">
-            <Plus className="w-4 h-4" />
-            Add Card
+            <Plus className="w-4 h-4" />Add Card
           </Button>
         </div>
       </div>
@@ -191,10 +174,8 @@ export default function FlashcardsPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Subjects</SelectItem>
-            {subjects.map((s) => (
-              <SelectItem key={String(s.id)} value={String(s.id)}>
-                {s.name}
-              </SelectItem>
+            {subjects.map(s => (
+              <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -206,18 +187,17 @@ export default function FlashcardsPage() {
           <h3 className="text-lg font-semibold mb-2">No flashcards yet</h3>
           <p className="text-muted-foreground mb-4">Create flashcards to boost your revision</p>
           <Button onClick={() => setAddOpen(true)} className="gap-2">
-            <Plus className="w-4 h-4" />
-            Add Flashcard
+            <Plus className="w-4 h-4" />Add Flashcard
           </Button>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {cards.map((card) => (
+          {cards.map(card => (
             <FlashCard
-              key={String(card.id)}
+              key={card.id}
               card={card}
-              onLearn={(learned) => handleLearn(card.id, card.chapterId, learned)}
-              onDelete={() => handleDelete(card.id, card.chapterId)}
+              onLearn={(learned) => handleLearn(card.id, learned)}
+              onDelete={() => handleDelete(card.id)}
             />
           ))}
         </div>
@@ -233,40 +213,26 @@ export default function FlashcardsPage() {
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label>Subject *</Label>
-              <Select
-                value={selectedSubjectId}
-                onValueChange={(v) => {
-                  setSelectedSubjectId(v);
-                  setSelectedChapterId('');
-                }}
-              >
+              <Select value={selectedSubjectId} onValueChange={v => { setSelectedSubjectId(v); setSelectedChapterId(''); }}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select subject" />
                 </SelectTrigger>
                 <SelectContent>
-                  {subjects.map((s) => (
-                    <SelectItem key={String(s.id)} value={String(s.id)}>
-                      {s.name}
-                    </SelectItem>
+                  {subjects.map(s => (
+                    <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
               <Label>Chapter *</Label>
-              <Select
-                value={selectedChapterId}
-                onValueChange={setSelectedChapterId}
-                disabled={!selectedSubjectId}
-              >
+              <Select value={selectedChapterId} onValueChange={setSelectedChapterId} disabled={!selectedSubjectId}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select chapter" />
                 </SelectTrigger>
                 <SelectContent>
-                  {chaptersForSelected.map((c) => (
-                    <SelectItem key={String(c.id)} value={String(c.id)}>
-                      {c.name}
-                    </SelectItem>
+                  {chaptersForSelected.map(c => (
+                    <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -277,7 +243,7 @@ export default function FlashcardsPage() {
                 id="card-front"
                 placeholder="Enter question or term..."
                 value={front}
-                onChange={(e) => setFront(e.target.value)}
+                onChange={e => setFront(e.target.value)}
                 rows={2}
               />
             </div>
@@ -287,26 +253,15 @@ export default function FlashcardsPage() {
                 id="card-back"
                 placeholder="Enter answer or definition..."
                 value={back}
-                onChange={(e) => setBack(e.target.value)}
+                onChange={e => setBack(e.target.value)}
                 rows={2}
               />
             </div>
           </div>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setAddOpen(false);
-                setFront('');
-                setBack('');
-              }}
-            >
-              Cancel
-            </Button>
+            <Button variant="outline" onClick={() => { setAddOpen(false); setFront(''); setBack(''); }}>Cancel</Button>
             <Button onClick={handleAdd} disabled={addFlashcard.isPending}>
-              {addFlashcard.isPending ? (
-                <Loader2 className="w-4 h-4 animate-spin mr-2" />
-              ) : null}
+              {addFlashcard.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
               Add Card
             </Button>
           </DialogFooter>

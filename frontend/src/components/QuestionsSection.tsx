@@ -1,134 +1,149 @@
 import { useState } from 'react';
-import { Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, ChevronUp, HelpCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { useGetQuestions, useAddQuestion, useDeleteQuestion } from '../hooks/useQueries';
-import type { Question } from '../backend';
+import { Textarea } from '@/components/ui/textarea';
+import { toast } from 'sonner';
+import { useGetQuestionsForChapter, useAddQuestion, useDeleteQuestion, LocalQuestion } from '../hooks/useQueries';
+
+function QuestionCard({ question, onDelete }: { question: LocalQuestion; onDelete: () => void }) {
+  const [showAnswer, setShowAnswer] = useState(false);
+
+  return (
+    <div className="border rounded-lg p-3 bg-background space-y-2">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-sm font-medium flex-1">{question.questionText}</p>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 text-destructive hover:text-destructive flex-shrink-0"
+          onClick={onDelete}
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </Button>
+      </div>
+      <button
+        onClick={() => setShowAnswer(!showAnswer)}
+        className="flex items-center gap-1 text-xs text-primary hover:underline"
+      >
+        {showAnswer ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+        {showAnswer ? 'Hide Answer' : 'Show Answer'}
+      </button>
+      {showAnswer && (
+        <div className="bg-muted/50 rounded-md p-2">
+          <p className="text-sm text-muted-foreground">{question.answer}</p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface QuestionsSectionProps {
-  chapterId: bigint;
-  subjectId: bigint;
+  chapterId: number;
+  subjectId: number;
 }
 
 export default function QuestionsSection({ chapterId, subjectId }: QuestionsSectionProps) {
-  const { data: questions = [], isLoading } = useGetQuestions(chapterId);
+  const { data: questions = [], isLoading } = useGetQuestionsForChapter(chapterId);
   const addQuestion = useAddQuestion();
   const deleteQuestion = useDeleteQuestion();
 
+  const [showForm, setShowForm] = useState(false);
   const [questionText, setQuestionText] = useState('');
   const [answer, setAnswer] = useState('');
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   const handleAdd = async () => {
-    if (!questionText.trim() || !answer.trim()) return;
-    await addQuestion.mutateAsync({
-      chapterId,
-      subjectId,
-      questionText: questionText.trim(),
-      answer: answer.trim(),
-    });
-    setQuestionText('');
-    setAnswer('');
+    if (!questionText.trim() || !answer.trim()) {
+      toast.error('Please enter both question and answer');
+      return;
+    }
+    try {
+      await addQuestion.mutateAsync({ chapterId, subjectId, questionText: questionText.trim(), answer: answer.trim() });
+      toast.success('Question added!');
+      setQuestionText('');
+      setAnswer('');
+      setShowForm(false);
+    } catch {
+      toast.error('Failed to add question');
+    }
   };
 
-  const handleDelete = async (questionId: bigint) => {
-    await deleteQuestion.mutateAsync({ questionId, chapterId });
+  const handleDelete = async (questionId: number) => {
+    try {
+      await deleteQuestion.mutateAsync(questionId);
+      toast.success('Question deleted');
+    } catch {
+      toast.error('Failed to delete question');
+    }
   };
 
-  const toggleExpand = (id: string) => {
-    setExpandedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  };
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-6">
+        <Loader2 className="w-5 h-5 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-4">
-      {/* Add question form */}
-      <div className="bg-gray-50 rounded-xl p-4 space-y-3">
-        <div>
-          <Label htmlFor="q-text">Question</Label>
-          <Input
-            id="q-text"
-            placeholder="Enter your question..."
-            value={questionText}
-            onChange={(e) => setQuestionText(e.target.value)}
-            className="mt-1 bg-white"
-          />
-        </div>
-        <div>
-          <Label htmlFor="q-answer">Answer</Label>
-          <Textarea
-            id="q-answer"
-            placeholder="Enter the answer..."
-            value={answer}
-            onChange={(e) => setAnswer(e.target.value)}
-            rows={3}
-            className="mt-1 resize-none bg-white"
-          />
-        </div>
-        <Button
-          size="sm"
-          onClick={handleAdd}
-          disabled={addQuestion.isPending || !questionText.trim() || !answer.trim()}
-          className="bg-teal-600 hover:bg-teal-700 text-white"
-        >
-          <Plus size={14} className="mr-1" />
-          {addQuestion.isPending ? 'Adding...' : 'Add Question'}
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">{questions.length} question{questions.length !== 1 ? 's' : ''}</p>
+        <Button size="sm" variant="outline" onClick={() => setShowForm(!showForm)} className="gap-1">
+          <Plus className="w-3.5 h-3.5" />Add Question
         </Button>
       </div>
 
-      {/* Questions list */}
-      {isLoading ? (
-        <div className="space-y-2">
-          {[1, 2].map((i) => (
-            <div key={i} className="h-14 bg-gray-100 rounded-lg animate-pulse" />
-          ))}
+      {showForm && (
+        <div className="border rounded-lg p-3 space-y-3 bg-muted/30">
+          <div className="space-y-1">
+            <Label className="text-xs">Question *</Label>
+            <Textarea
+              placeholder="Enter your question..."
+              value={questionText}
+              onChange={e => setQuestionText(e.target.value)}
+              rows={2}
+              className="text-sm"
+              autoFocus
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Answer *</Label>
+            <Textarea
+              placeholder="Enter the answer..."
+              value={answer}
+              onChange={e => setAnswer(e.target.value)}
+              rows={2}
+              className="text-sm"
+            />
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={handleAdd} disabled={addQuestion.isPending} className="flex-1">
+              {addQuestion.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+              Save Question
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => { setShowForm(false); setQuestionText(''); setAnswer(''); }}>
+              Cancel
+            </Button>
+          </div>
         </div>
-      ) : questions.length === 0 ? (
-        <p className="text-sm text-gray-400 text-center py-4">No questions yet. Add your first question above.</p>
+      )}
+
+      {questions.length === 0 && !showForm ? (
+        <div className="text-center py-6 text-muted-foreground">
+          <HelpCircle className="w-8 h-8 mx-auto mb-2 opacity-40" />
+          <p className="text-sm">No questions yet. Add practice Q&A pairs!</p>
+        </div>
       ) : (
         <div className="space-y-2">
-          {questions.map((q: Question) => {
-            const idStr = String(q.id);
-            const expanded = expandedIds.has(idStr);
-            return (
-              <div key={idStr} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                <div className="flex items-start gap-2 p-3">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-800">{q.questionText}</p>
-                  </div>
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    <button
-                      onClick={() => toggleExpand(idStr)}
-                      className="text-teal-600 hover:text-teal-800 transition-colors"
-                    >
-                      {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                    </button>
-                    <button
-                      onClick={() => handleDelete(q.id)}
-                      className="text-gray-300 hover:text-red-500 transition-colors"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </div>
-                {expanded && (
-                  <div className="px-3 pb-3 border-t border-gray-100 pt-2">
-                    <p className="text-xs text-gray-500 font-medium mb-1">Answer:</p>
-                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{q.answer}</p>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          {questions.map(q => (
+            <QuestionCard
+              key={q.id}
+              question={q}
+              onDelete={() => handleDelete(q.id)}
+            />
+          ))}
         </div>
       )}
     </div>

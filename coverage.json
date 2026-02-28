@@ -1,30 +1,72 @@
 {
   "kind": "coverage_report",
   "version": "1.0",
-  "generatedAt": "2026-02-28T08:02:10.959Z",
+  "generatedAt": "2026-02-28T08:52:58.804Z",
   "sources": {
     "buildRequest": true,
     "implementationPlan": true
   },
   "requirements": {
-    "total": 1,
-    "implemented": 1,
+    "total": 5,
+    "implemented": 5,
     "items": [
       {
         "id": "REQ-1",
-        "summary": "Revert all frontend visual/styling changes introduced in the most recent session (Version 10), including: sidebar background colour changes, 'Made by DEV' badge styling/colours, any widget colour overrides, and any other cosmetic modifications made in that session — restoring them to their prior state.",
+        "summary": "Add a 'Parent Account' section to the localStorage data layer: store parent accounts with fields { parentUsername, passwordHash, childUsername } where childUsername links to a registered student account. Add functions: createParentAccount(parentUsername, childPassword, childUsername), parentLogin(parentUsername, childPassword) that validates by matching childPassword against the linked student's stored password hash, getParentSession(), setParentSession(), clearParentSession(), and getLinkedChildData(parentUsername) that returns the child student's full profile and all associated data (subjects, chapters, notes, questions, mock tests with attempt history, flashcards with usage counts, question bank entries, planner tasks, targets, streaks, progress stats).",
         "status": "implemented",
         "plannedFiles": [
-          "frontend/src/components/Layout.tsx",
-          "frontend/src/components/MadeByDevBadge.tsx",
-          "frontend/src/components/CalendarWidget.tsx",
-          "frontend/src/components/StreakCard.tsx",
-          "frontend/src/components/QuoteOfTheDayCard.tsx",
-          "frontend/src/index.css",
-          "frontend/tailwind.config.js"
+          "frontend/src/utils/localStorageService.ts"
         ],
         "matchedFiles": [
+          "frontend/src/utils/localStorageService.ts"
+        ]
+      },
+      {
+        "id": "REQ-2",
+        "summary": "On the LoginPage, add two new buttons below the existing student login/register buttons: 'Login as Parent' and 'Create Parent Account'. 'Create Parent Account' opens a dialog/modal with fields: Parent Username, Child's Username (the registered student), and Child's Password (for verification). On submission, validate that the child username exists and the password matches, then create the parent account. 'Login as Parent' opens a dialog with fields: Parent Username and Child's Password, authenticates via parentLogin(), and on success redirects to the Parent Dashboard route.",
+        "status": "implemented",
+        "plannedFiles": [
+          "frontend/src/pages/LoginPage.tsx"
+        ],
+        "matchedFiles": [
+          "frontend/src/pages/LoginPage.tsx"
+        ]
+      },
+      {
+        "id": "REQ-3",
+        "summary": "Create a new Parent Dashboard page (route: /parent-dashboard). At the top of the page, display the parent's username prominently, and directly beneath it display the child's full name with a label like 'Viewing: [Child's Name]'. Throughout the page, all content labels must use personalized phrasing such as 'Your son/daughter [Name]'s subjects', 'Your son/daughter [Name]'s mock tests', etc., substituting the child's actual name and using 'son' or 'daughter' based on data available (default to 'child' if gender is not stored). The dashboard must include the following sections: (1) Overall Performance summary card showing chapter completion %, average mock test score, study streak, and targets met. (2) Subjects list showing all subjects with chapter progress bars. (3) Uploaded Notes count per subject/chapter with the ability to see note titles. (4) Questions added per chapter. (5) Mock Tests — list all mock tests with status 'Attempted' or 'Not Attempted', best score, and attempt count. (6) Flashcards — show total flashcard count and how many times each card has been reviewed/flipped. (7) Question Bank — list of all questions in the question bank filtered by subject/chapter. (8) A Comment Box section in a prominent center position on the dashboard with a label 'Send feedback to [Child's Name]' and three styled buttons: 'Scold 😠', 'Comment 💬', 'Appreciate 🌟' that pre-fill the textarea with a tone prefix (e.g., '⚠️ [Scold]: ', '💬 [Comment]: ', '🌟 [Appreciate]: '), plus a text area for the message and a Send button.",
+        "status": "implemented",
+        "plannedFiles": [
+          "frontend/src/pages/ParentDashboard.tsx"
+        ],
+        "matchedFiles": [
+          "frontend/src/pages/ParentDashboard.tsx"
+        ]
+      },
+      {
+        "id": "REQ-4",
+        "summary": "Implement a notification system in localStorage: add functions addNotification(username, notification: { id, from, type: 'scold'|'comment'|'appreciate', message, timestamp, read: false }) and getNotifications(username), markNotificationRead(username, notificationId). When a parent sends a comment from the Parent Dashboard, call addNotification() targeting the child student's username. In the student-facing Layout (sidebar/header), add a notification bell icon that shows an unread count badge. Clicking it opens a dropdown/panel listing all notifications with sender ('From: [Parent Username]'), type badge (Scold/Comment/Appreciate with appropriate color), message text, and timestamp. Clicking a notification marks it as read and clears the badge count.",
+        "status": "implemented",
+        "plannedFiles": [
+          "frontend/src/utils/localStorageService.ts",
           "frontend/src/components/Layout.tsx"
+        ],
+        "matchedFiles": [
+          "frontend/src/utils/localStorageService.ts",
+          "frontend/src/components/Layout.tsx"
+        ]
+      },
+      {
+        "id": "REQ-5",
+        "summary": "Add the Parent Dashboard route (/parent-dashboard) to the TanStack Router configuration in App.tsx. The route must be protected: if no parent session is active, redirect to /login. Include a logout option on the Parent Dashboard that clears the parent session and redirects to /login. Do not alter any existing student routes or auth guards.",
+        "status": "implemented",
+        "plannedFiles": [
+          "frontend/src/App.tsx",
+          "frontend/src/pages/ParentDashboard.tsx"
+        ],
+        "matchedFiles": [
+          "frontend/src/App.tsx",
+          "frontend/src/pages/ParentDashboard.tsx"
         ]
       }
     ]
@@ -34,7 +76,11 @@
     "feature_evidence.json",
     "frontend-file-summaries.txt",
     "frontend-implementation-plan.json",
+    "frontend/src/App.tsx",
     "frontend/src/components/Layout.tsx",
+    "frontend/src/pages/LoginPage.tsx",
+    "frontend/src/pages/ParentDashboard.tsx",
+    "frontend/src/utils/localStorageService.ts",
     "project_state.json",
     "scratch/component-selection.json",
     "spec.md",

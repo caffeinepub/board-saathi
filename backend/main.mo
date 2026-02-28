@@ -12,7 +12,6 @@ import Authorization "authorization/access-control";
 import MixinAuthorization "authorization/MixinAuthorization";
 
 
-// Specify the migration function in the with-clause
 
 actor {
   let accessControlState = Authorization.initState();
@@ -71,7 +70,6 @@ actor {
     id : Nat;
     text : Text;
     dateTime : Time.Time;
-    targetId : ?Nat; // Added targetId field
   };
 
   public type Target = {
@@ -783,7 +781,7 @@ actor {
   // ─────────────────────────────────────────────────────────────────────────────────────────── Reminders ─────
 
   /// addReminder: only authenticated users (#user) can add reminders.
-  public shared ({ caller }) func addReminder(text : Text, dateTime : Time.Time, targetId : ?Nat) : async Nat {
+  public shared ({ caller }) func addReminder(text : Text, dateTime : Time.Time) : async Nat {
     if (not Authorization.hasPermission(accessControlState, caller, #user)) {
       Runtime.trap("Unauthorized: Only users can add reminders");
     };
@@ -792,7 +790,6 @@ actor {
       id = reminderIdCounter;
       text;
       dateTime;
-      targetId; // Store the linked target ID, if any
     };
     let existing = switch (userReminders.get(caller)) {
       case (?reminders) { reminders };

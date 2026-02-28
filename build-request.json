@@ -1,37 +1,133 @@
 {
   "kind": "build_request",
-  "title": "Revert recent widget colour and visual changes",
+  "title": "Add Parent Portal: Login, Dashboard, Child Progress View & Comment System",
+  "projectName": "Board Saathi",
   "priority": "normal",
   "requirements": [
     {
       "id": "REQ-1",
-      "text": "Revert all frontend visual/styling changes introduced in the most recent session (Version 10), including: sidebar background colour changes, 'Made by DEV' badge styling/colours, any widget colour overrides, and any other cosmetic modifications made in that session — restoring them to their prior state.",
+      "text": "Add a 'Parent Account' section to the localStorage data layer: store parent accounts with fields { parentUsername, passwordHash, childUsername } where childUsername links to a registered student account. Add functions: createParentAccount(parentUsername, childPassword, childUsername), parentLogin(parentUsername, childPassword) that validates by matching childPassword against the linked student's stored password hash, getParentSession(), setParentSession(), clearParentSession(), and getLinkedChildData(parentUsername) that returns the child student's full profile and all associated data (subjects, chapters, notes, questions, mock tests with attempt history, flashcards with usage counts, question bank entries, planner tasks, targets, streaks, progress stats).",
       "target": "frontend",
       "source": {
         "messageIds": [
           "msg-4"
         ],
         "quotes": [
-          "Undo all changes only you have done now only of now like widget colour etc ."
+          "Parent will enter their by entering their username, son daughter's password (password saved by the student while registering)"
         ]
       },
       "acceptanceCriteria": [
-        "Sidebar colour is restored to the value it had before Version 10 changes.",
-        "The 'Made by DEV' badge styling/colours match the pre-Version-10 state.",
-        "All widget colours (calendar widget, streak card, quote card, etc.) are restored to their pre-Version-10 appearance.",
-        "No other layout or functional changes are introduced — only cosmetic/colour reversal.",
-        "The app renders without console errors after the revert."
+        "Parent account creation stores parentUsername and childUsername with child's hashed password as credential",
+        "parentLogin() validates parentUsername + childPassword against the linked student's stored password",
+        "If childPassword does not match the linked student's password, login fails with an error message",
+        "getLinkedChildData() returns all student data namespaced under the child's username from localStorage",
+        "Parent session is stored separately from student session so both can coexist without collision"
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "text": "On the LoginPage, add two new buttons below the existing student login/register buttons: 'Login as Parent' and 'Create Parent Account'. 'Create Parent Account' opens a dialog/modal with fields: Parent Username, Child's Username (the registered student), and Child's Password (for verification). On submission, validate that the child username exists and the password matches, then create the parent account. 'Login as Parent' opens a dialog with fields: Parent Username and Child's Password, authenticates via parentLogin(), and on success redirects to the Parent Dashboard route.",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-4"
+        ],
+        "quotes": [
+          "In login page there is one more button login as parent or if first parent create a parent account"
+        ]
+      },
+      "acceptanceCriteria": [
+        "'Login as Parent' and 'Create Parent Account' buttons are visible on the login page below the student auth options",
+        "'Create Parent Account' dialog collects Parent Username, Child's Username, and Child's Password",
+        "If child username does not exist or password is wrong, show a clear error message",
+        "On successful parent login, user is redirected to the Parent Dashboard page",
+        "Parent auth state is tracked separately from student auth state"
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "text": "Create a new Parent Dashboard page (route: /parent-dashboard). At the top of the page, display the parent's username prominently, and directly beneath it display the child's full name with a label like 'Viewing: [Child's Name]'. Throughout the page, all content labels must use personalized phrasing such as 'Your son/daughter [Name]'s subjects', 'Your son/daughter [Name]'s mock tests', etc., substituting the child's actual name and using 'son' or 'daughter' based on data available (default to 'child' if gender is not stored). The dashboard must include the following sections: (1) Overall Performance summary card showing chapter completion %, average mock test score, study streak, and targets met. (2) Subjects list showing all subjects with chapter progress bars. (3) Uploaded Notes count per subject/chapter with the ability to see note titles. (4) Questions added per chapter. (5) Mock Tests — list all mock tests with status 'Attempted' or 'Not Attempted', best score, and attempt count. (6) Flashcards — show total flashcard count and how many times each card has been reviewed/flipped. (7) Question Bank — list of all questions in the question bank filtered by subject/chapter. (8) A Comment Box section in a prominent center position on the dashboard with a label 'Send feedback to [Child's Name]' and three styled buttons: 'Scold 😠', 'Comment 💬', 'Appreciate 🌟' that pre-fill the textarea with a tone prefix (e.g., '⚠️ [Scold]: ', '💬 [Comment]: ', '🌟 [Appreciate]: '), plus a text area for the message and a Send button.",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-4"
+        ],
+        "quotes": [
+          "After login the parents can see their childs progress ,subject , uploaded notes, question, mock test made by the student given or not , flashcards how many times , question bank , students overall performance",
+          "At the top of this page , the user name means parent username and under it it's son name",
+          "There is a comment box in the middle of homepage or dashboard where written, (scold , comment, appreciate)"
+        ]
+      },
+      "acceptanceCriteria": [
+        "Parent dashboard route /parent-dashboard is accessible only when a parent session is active; redirects to login otherwise",
+        "Parent username is displayed at top of page; child's name is displayed directly beneath it",
+        "All section headings and descriptions use 'Your son/daughter [Name]' phrasing",
+        "Overall performance card shows chapter completion %, average mock test score, current streak, and targets met",
+        "Subjects section lists all child's subjects with chapter count and completion percentage",
+        "Mock Tests section shows each test with Attempted/Not Attempted status, attempt count, and best score",
+        "Flashcards section shows total count and per-card flip/review count",
+        "Question Bank section shows all questions grouped by subject/chapter",
+        "Comment box is prominently placed with Scold/Comment/Appreciate buttons that pre-fill textarea tone prefix",
+        "Send button is disabled when textarea is empty"
+      ]
+    },
+    {
+      "id": "REQ-4",
+      "text": "Implement a notification system in localStorage: add functions addNotification(username, notification: { id, from, type: 'scold'|'comment'|'appreciate', message, timestamp, read: false }) and getNotifications(username), markNotificationRead(username, notificationId). When a parent sends a comment from the Parent Dashboard, call addNotification() targeting the child student's username. In the student-facing Layout (sidebar/header), add a notification bell icon that shows an unread count badge. Clicking it opens a dropdown/panel listing all notifications with sender ('From: [Parent Username]'), type badge (Scold/Comment/Appreciate with appropriate color), message text, and timestamp. Clicking a notification marks it as read and clears the badge count.",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-4"
+        ],
+        "quotes": [
+          "parent will write comment and send the message or comment will come to that student profile in notification bar"
+        ]
+      },
+      "acceptanceCriteria": [
+        "Sending a comment from the parent dashboard writes a notification entry to the child's localStorage namespace",
+        "Student Layout shows a bell icon in the header/sidebar with a red badge showing unread notification count",
+        "Badge disappears or shows 0 when all notifications are read",
+        "Notification panel lists each message with sender, type (Scold/Comment/Appreciate) badge, message body, and timestamp",
+        "Clicking a notification marks it read and removes it from the unread count",
+        "Appreciate notifications are styled in green, Comment in blue, Scold in red/orange",
+        "After sending a comment, the parent dashboard textarea is cleared and a success confirmation is shown"
+      ]
+    },
+    {
+      "id": "REQ-5",
+      "text": "Add the Parent Dashboard route (/parent-dashboard) to the TanStack Router configuration in App.tsx. The route must be protected: if no parent session is active, redirect to /login. Include a logout option on the Parent Dashboard that clears the parent session and redirects to /login. Do not alter any existing student routes or auth guards.",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-4"
+        ],
+        "quotes": [
+          "So with your own logic do these changes in app. And no other changes"
+        ]
+      },
+      "acceptanceCriteria": [
+        "/parent-dashboard route exists and renders the Parent Dashboard page",
+        "Navigating to /parent-dashboard without a parent session redirects to /login",
+        "A logout button on the parent dashboard clears parent session and navigates to /login",
+        "All existing student routes remain unaffected"
       ]
     }
   ],
   "constraints": [
-    "Only revert cosmetic/colour/styling changes introduced in Version 10 — do not touch backend logic, data models, or functional features.",
-    "Do not modify any immutable frontend paths: useInternetIdentity.ts, useActor.ts, main.tsx, or components/ui."
+    "Do not modify any existing student authentication or session logic",
+    "Do not change any existing student-facing pages or routes",
+    "Do not modify files under frontend/src/hooks/useInternetIdentity.ts, frontend/src/hooks/useActor.ts, frontend/src/main.tsx, or frontend/src/components/ui",
+    "Parent data must be stored in localStorage under a separate namespace from student data",
+    "No backend changes required — all parent portal data is read from the same localStorage used by students"
   ],
   "nonGoals": [
-    "Reverting functional features added in Version 10 (subject target reminders, pro button, calendar icon).",
-    "Changing any backend code.",
-    "Introducing new visual styles or redesigns."
+    "No changes to the backend Motoko actor",
+    "No changes to any existing student pages (Dashboard, SubjectsPage, FlashcardsPage, etc.)",
+    "No real-time messaging or WebSocket communication",
+    "No email or SMS notifications",
+    "No gender selection field — default to 'child' if gender is not stored",
+    "No Internet Identity integration for parent login",
+    "No changes to the sidebar color or any other visual tweaks outside the parent portal"
   ],
   "imageRequirements": {
     "required": [],

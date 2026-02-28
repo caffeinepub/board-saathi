@@ -1,20 +1,16 @@
 import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { Plus, Trash2, ArrowLeft } from 'lucide-react';
+import { Plus, Trash2, ArrowLeft, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { toast } from 'sonner';
 import { useGetSubjects, useCreateMockTest } from '../hooks/useQueries';
-import type { MCQQuestion } from '../backend';
 
-interface LocalQuestion {
+interface MCQQuestionForm {
   id: number;
   questionText: string;
   options: string[];
@@ -26,161 +22,174 @@ export default function CreateMockTestPage() {
   const { data: subjects = [] } = useGetSubjects();
   const createMockTest = useCreateMockTest();
 
-  const [name, setName] = useState('');
-  const [subjectId, setSubjectId] = useState('');
-  const [questions, setQuestions] = useState<LocalQuestion[]>([
+  const [testName, setTestName] = useState('');
+  const [subjectId, setSubjectId] = useState<string>('');
+  const [questions, setQuestions] = useState<MCQQuestionForm[]>([
     { id: 1, questionText: '', options: ['', '', '', ''], correctOption: 0 },
   ]);
 
   const addQuestion = () => {
-    setQuestions((prev) => [
+    setQuestions(prev => [
       ...prev,
       { id: prev.length + 1, questionText: '', options: ['', '', '', ''], correctOption: 0 },
     ]);
   };
 
   const removeQuestion = (idx: number) => {
-    setQuestions((prev) => prev.filter((_, i) => i !== idx));
+    if (questions.length === 1) {
+      toast.error('At least one question is required');
+      return;
+    }
+    setQuestions(prev => prev.filter((_, i) => i !== idx));
   };
 
-  const updateQuestion = (idx: number, field: keyof LocalQuestion, value: string | number | string[]) => {
-    setQuestions((prev) =>
-      prev.map((q, i) => (i === idx ? { ...q, [field]: value } : q))
-    );
+  const updateQuestion = (idx: number, field: keyof MCQQuestionForm, value: string | number | string[]) => {
+    setQuestions(prev => prev.map((q, i) => i === idx ? { ...q, [field]: value } : q));
   };
 
-  const updateOption = (qIdx: number, oIdx: number, value: string) => {
-    setQuestions((prev) =>
-      prev.map((q, i) => {
-        if (i !== qIdx) return q;
-        const newOptions = [...q.options];
-        newOptions[oIdx] = value;
-        return { ...q, options: newOptions };
-      })
-    );
-  };
-
-  const handleSubmit = async () => {
-    if (!name.trim() || !subjectId) return;
-    const mcqQuestions: MCQQuestion[] = questions.map((q, idx) => ({
-      id: BigInt(idx + 1),
-      questionText: q.questionText,
-      options: q.options,
-      correctOption: BigInt(q.correctOption),
+  const updateOption = (qIdx: number, optIdx: number, value: string) => {
+    setQuestions(prev => prev.map((q, i) => {
+      if (i !== qIdx) return q;
+      const newOptions = [...q.options];
+      newOptions[optIdx] = value;
+      return { ...q, options: newOptions };
     }));
-    await createMockTest.mutateAsync({
-      name: name.trim(),
-      subjectId: BigInt(subjectId),
-      questions: mcqQuestions,
-    });
-    navigate({ to: '/mock-tests' });
   };
 
-  const isValid =
-    name.trim() &&
-    subjectId &&
-    questions.length > 0 &&
-    questions.every((q) => q.questionText.trim() && q.options.every((o) => o.trim()));
+  const handleCreate = async () => {
+    if (!testName.trim()) {
+      toast.error('Please enter a test name');
+      return;
+    }
+    if (!subjectId) {
+      toast.error('Please select a subject');
+      return;
+    }
+    for (let i = 0; i < questions.length; i++) {
+      const q = questions[i];
+      if (!q.questionText.trim()) {
+        toast.error(`Question ${i + 1} is empty`);
+        return;
+      }
+      if (q.options.some(o => !o.trim())) {
+        toast.error(`All options for Question ${i + 1} must be filled`);
+        return;
+      }
+    }
+
+    try {
+      const id = await createMockTest.mutateAsync({
+        name: testName.trim(),
+        subjectId: parseInt(subjectId, 10),
+        questions: questions.map(q => ({
+          id: q.id,
+          questionText: q.questionText.trim(),
+          options: q.options.map(o => o.trim()),
+          correctOption: q.correctOption,
+        })),
+      });
+      toast.success('Mock test created!');
+      navigate({ to: '/mock-tests' });
+    } catch {
+      toast.error('Failed to create test');
+    }
+  };
 
   return (
     <div className="p-4 md:p-6 max-w-2xl mx-auto">
       <div className="flex items-center gap-3 mb-6">
-        <button
-          onClick={() => navigate({ to: '/mock-tests' })}
-          className="text-gray-400 hover:text-gray-600 transition-colors"
-        >
-          <ArrowLeft size={20} />
-        </button>
-        <h1 className="text-xl font-bold text-gray-900">Create Mock Test</h1>
+        <Button variant="ghost" size="icon" onClick={() => navigate({ to: '/mock-tests' })}>
+          <ArrowLeft className="w-5 h-5" />
+        </Button>
+        <h1 className="text-2xl font-bold">Create Mock Test</h1>
       </div>
 
       <div className="space-y-6">
         {/* Test details */}
-        <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4">
-          <div>
-            <Label htmlFor="test-name">Test Name *</Label>
-            <Input
-              id="test-name"
-              placeholder="e.g., Chapter 1 Practice Test"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="mt-1"
-            />
-          </div>
-          <div>
-            <Label>Subject *</Label>
-            <Select value={subjectId} onValueChange={setSubjectId}>
-              <SelectTrigger className="mt-1">
-                <SelectValue placeholder="Select subject..." />
-              </SelectTrigger>
-              <SelectContent>
-                {subjects.map((s) => (
-                  <SelectItem key={String(s.id)} value={String(s.id)}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+        <Card>
+          <CardHeader><CardTitle className="text-base">Test Details</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="test-name">Test Name *</Label>
+              <Input
+                id="test-name"
+                placeholder="e.g., Chapter 1 Practice Test"
+                value={testName}
+                onChange={e => setTestName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Subject *</Label>
+              <Select value={subjectId} onValueChange={setSubjectId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select subject" />
+                </SelectTrigger>
+                <SelectContent>
+                  {subjects.map(s => (
+                    <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Questions */}
         {questions.map((q, qIdx) => (
-          <div key={q.id} className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold text-gray-700">Question {qIdx + 1}</span>
-              {questions.length > 1 && (
-                <button
+          <Card key={q.id}>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm">Question {qIdx + 1}</CardTitle>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-destructive hover:text-destructive"
                   onClick={() => removeQuestion(qIdx)}
-                  className="text-red-400 hover:text-red-600 transition-colors"
                 >
-                  <Trash2 size={16} />
-                </button>
-              )}
-            </div>
-            <Input
-              placeholder="Enter question text..."
-              value={q.questionText}
-              onChange={(e) => updateQuestion(qIdx, 'questionText', e.target.value)}
-            />
-            <div className="space-y-2">
-              {q.options.map((opt, oIdx) => (
-                <div key={oIdx} className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name={`correct-${qIdx}`}
-                    checked={q.correctOption === oIdx}
-                    onChange={() => updateQuestion(qIdx, 'correctOption', oIdx)}
-                    className="text-teal-600"
-                  />
-                  <Input
-                    placeholder={`Option ${String.fromCharCode(65 + oIdx)}`}
-                    value={opt}
-                    onChange={(e) => updateOption(qIdx, oIdx, e.target.value)}
-                    className="flex-1"
-                  />
-                </div>
-              ))}
-            </div>
-            <p className="text-xs text-gray-400">Select the radio button next to the correct answer</p>
-          </div>
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-xs">Question Text *</Label>
+                <Input
+                  placeholder="Enter your question..."
+                  value={q.questionText}
+                  onChange={e => updateQuestion(qIdx, 'questionText', e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Options (select correct answer)</Label>
+                <RadioGroup
+                  value={q.correctOption.toString()}
+                  onValueChange={v => updateQuestion(qIdx, 'correctOption', parseInt(v, 10))}
+                >
+                  {q.options.map((opt, optIdx) => (
+                    <div key={optIdx} className="flex items-center gap-3">
+                      <RadioGroupItem value={optIdx.toString()} id={`q${qIdx}-opt${optIdx}`} />
+                      <Input
+                        placeholder={`Option ${String.fromCharCode(65 + optIdx)}`}
+                        value={opt}
+                        onChange={e => updateOption(qIdx, optIdx, e.target.value)}
+                        className="flex-1 h-8 text-sm"
+                      />
+                    </div>
+                  ))}
+                </RadioGroup>
+                <p className="text-xs text-muted-foreground">Select the radio button next to the correct answer</p>
+              </div>
+            </CardContent>
+          </Card>
         ))}
 
-        <Button
-          variant="outline"
-          onClick={addQuestion}
-          className="w-full border-dashed border-teal-300 text-teal-600 hover:bg-teal-50"
-        >
-          <Plus size={16} className="mr-2" />
-          Add Question
+        <Button variant="outline" onClick={addQuestion} className="w-full gap-2">
+          <Plus className="w-4 h-4" />Add Question
         </Button>
 
-        <Button
-          onClick={handleSubmit}
-          disabled={!isValid || createMockTest.isPending}
-          className="w-full bg-teal-600 hover:bg-teal-700 text-white"
-        >
-          {createMockTest.isPending ? 'Creating...' : 'Create Test'}
+        <Button onClick={handleCreate} disabled={createMockTest.isPending} className="w-full">
+          {createMockTest.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+          Create Test
         </Button>
       </div>
     </div>

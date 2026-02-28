@@ -97,7 +97,6 @@ export interface PlannerTask {
 export interface Reminder {
     id: bigint;
     text: string;
-    targetId?: bigint;
     dateTime: Time;
 }
 export interface Flashcard {
@@ -177,7 +176,7 @@ export interface backendInterface {
     /**
      * / addReminder: only authenticated users (#user) can add reminders.
      */
-    addReminder(text: string, dateTime: Time, targetId: bigint | null): Promise<bigint>;
+    addReminder(text: string, dateTime: Time): Promise<bigint>;
     addSubject(name: string): Promise<bigint>;
     /**
      * / addTarget: only authenticated users (#user) can add targets.

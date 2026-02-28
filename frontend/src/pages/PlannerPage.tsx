@@ -15,6 +15,7 @@ export default function PlannerPage() {
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth()); // 0-indexed
+  // selectedDay is just the day-of-month number (or null)
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -22,13 +23,10 @@ export default function PlannerPage() {
   const { data: tasks = [] } = useGetPlannerTasksForMonth(viewYear, viewMonth + 1);
 
   // Build a map: day -> task count for the current view month
-  // task.date is bigint nanoseconds from the backend
   const taskCountByDay: Record<number, number> = {};
   const completedByDay: Record<number, number> = {};
   tasks.forEach((task) => {
-    // Convert bigint nanoseconds to ms for Date
-    const dateMs = Number(task.date) / 1_000_000;
-    const d = new Date(dateMs);
+    const d = new Date(task.date); // task.date is now a number (ms timestamp)
     if (d.getFullYear() === viewYear && d.getMonth() === viewMonth) {
       const day = d.getDate();
       taskCountByDay[day] = (taskCountByDay[day] || 0) + 1;
@@ -42,21 +40,13 @@ export default function PlannerPage() {
   const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
 
   const prevMonth = () => {
-    if (viewMonth === 0) {
-      setViewMonth(11);
-      setViewYear((y) => y - 1);
-    } else {
-      setViewMonth((m) => m - 1);
-    }
+    if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1); }
+    else setViewMonth(m => m - 1);
   };
 
   const nextMonth = () => {
-    if (viewMonth === 11) {
-      setViewMonth(0);
-      setViewYear((y) => y + 1);
-    } else {
-      setViewMonth((m) => m + 1);
-    }
+    if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y + 1); }
+    else setViewMonth(m => m + 1);
   };
 
   const handleDayClick = (day: number) => {
@@ -65,16 +55,11 @@ export default function PlannerPage() {
   };
 
   const isToday = (day: number) =>
-    day === today.getDate() &&
-    viewMonth === today.getMonth() &&
-    viewYear === today.getFullYear();
+    day === today.getDate() && viewMonth === today.getMonth() && viewYear === today.getFullYear();
 
   const selectedDateLabel = selectedDay
     ? new Date(viewYear, viewMonth, selectedDay).toLocaleDateString('en-IN', {
-        weekday: 'long',
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
+        weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
       })
     : '';
 
@@ -84,14 +69,10 @@ export default function PlannerPage() {
         <h1 className="text-2xl font-bold">Study Planner</h1>
         <Button
           size="sm"
-          onClick={() => {
-            setSelectedDay(today.getDate());
-            setDialogOpen(true);
-          }}
+          onClick={() => { setSelectedDay(today.getDate()); setDialogOpen(true); }}
           className="gap-1"
         >
-          <Plus className="w-4 h-4" />
-          Today
+          <Plus className="w-4 h-4" />Today
         </Button>
       </div>
 
@@ -112,11 +93,8 @@ export default function PlannerPage() {
       <div className="bg-card rounded-xl border overflow-hidden">
         {/* Day headers */}
         <div className="grid grid-cols-7 border-b">
-          {DAYS.map((d) => (
-            <div
-              key={d}
-              className="py-2 text-center text-xs font-medium text-muted-foreground"
-            >
+          {DAYS.map(d => (
+            <div key={d} className="py-2 text-center text-xs font-medium text-muted-foreground">
               {d}
             </div>
           ))}
@@ -192,7 +170,11 @@ export default function PlannerPage() {
             </DialogTitle>
           </DialogHeader>
           {selectedDay !== null && (
-            <DailyView year={viewYear} month={viewMonth + 1} date={selectedDay} />
+            <DailyView
+              year={viewYear}
+              month={viewMonth + 1}
+              date={selectedDay}
+            />
           )}
         </DialogContent>
       </Dialog>

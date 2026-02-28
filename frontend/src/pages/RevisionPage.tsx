@@ -8,27 +8,22 @@ import {
   useMarkRevisionTaskCompleted,
   useGetSubjects,
   useGetAllChapters,
+  LocalRevisionTask,
 } from '../hooks/useQueries';
-import type { RevisionTask } from '../backend';
 
-function getRevisionLabel(num: bigint) {
-  const n = Number(num);
+function getRevisionLabel(num: number) {
   const labels = ['1st Revision', '2nd Revision', '3rd Revision', '4th Revision'];
-  return labels[n - 1] || `Revision #${n}`;
+  return labels[num - 1] || `Revision #${num}`;
 }
 
-function getDueDateStatus(dueDateNs: bigint) {
+function getDueDateStatus(dueDate: number) {
   const now = Date.now();
-  const dueDateMs = Number(dueDateNs) / 1_000_000;
-  const diff = dueDateMs - now;
+  const diff = dueDate - now;
   const days = Math.floor(diff / (1000 * 60 * 60 * 24));
 
-  if (diff < 0)
-    return { label: 'Overdue', color: 'text-destructive', bg: 'bg-destructive/10', icon: AlertCircle };
-  if (days === 0)
-    return { label: 'Due Today', color: 'text-orange-600', bg: 'bg-orange-50 dark:bg-orange-950/30', icon: Clock };
-  if (days <= 3)
-    return { label: `Due in ${days}d`, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/30', icon: Clock };
+  if (diff < 0) return { label: 'Overdue', color: 'text-destructive', bg: 'bg-destructive/10', icon: AlertCircle };
+  if (days === 0) return { label: 'Due Today', color: 'text-orange-600', bg: 'bg-orange-50 dark:bg-orange-950/30', icon: Clock };
+  if (days <= 3) return { label: `Due in ${days}d`, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/30', icon: Clock };
   return { label: `Due in ${days}d`, color: 'text-muted-foreground', bg: 'bg-muted/50', icon: Clock };
 }
 
@@ -38,18 +33,19 @@ export default function RevisionPage() {
   const { data: chapters = [] } = useGetAllChapters();
   const markCompleted = useMarkRevisionTaskCompleted();
 
-  const pending = tasks.filter((t) => !t.completed);
-  const completed = tasks.filter((t) => t.completed);
+  const now = Date.now();
+  const pending = tasks.filter(t => !t.completed);
+  const completed = tasks.filter(t => t.completed);
 
-  const getSubjectName = (subjectId: bigint) => {
-    return subjects.find((s) => s.id === subjectId)?.name ?? `Subject ${subjectId}`;
+  const getSubjectName = (subjectId: number) => {
+    return subjects.find(s => s.id === subjectId)?.name ?? `Subject ${subjectId}`;
   };
 
-  const getChapterName = (chapterId: bigint) => {
-    return chapters.find((c) => c.id === chapterId)?.name ?? `Chapter ${chapterId}`;
+  const getChapterName = (chapterId: number) => {
+    return chapters.find(c => c.id === chapterId)?.name ?? `Chapter ${chapterId}`;
   };
 
-  const handleToggle = async (task: RevisionTask, checked: boolean) => {
+  const handleToggle = async (task: LocalRevisionTask, checked: boolean) => {
     try {
       await markCompleted.mutateAsync({ revisionId: task.id, completed: checked });
       if (checked) toast.success('Revision completed! 🎉');
@@ -58,11 +54,10 @@ export default function RevisionPage() {
     }
   };
 
-  const RevisionCard = ({ task }: { task: RevisionTask }) => {
+  const RevisionCard = ({ task }: { task: LocalRevisionTask }) => {
     const status = getDueDateStatus(task.dueDate);
     const StatusIcon = status.icon;
-    const dueDateMs = Number(task.dueDate) / 1_000_000;
-    const dueDate = new Date(dueDateMs);
+    const dueDate = new Date(task.dueDate);
 
     return (
       <Card className={`transition-all ${task.completed ? 'opacity-60' : ''}`}>
@@ -84,12 +79,9 @@ export default function RevisionPage() {
               <p className="text-xs text-muted-foreground mb-2">
                 {getChapterName(task.chapterId)}
               </p>
-              <div
-                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${status.bg} ${status.color}`}
-              >
+              <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${status.bg} ${status.color}`}>
                 <StatusIcon className="w-3 h-3" />
-                {status.label} ·{' '}
-                {dueDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                {status.label} · {dueDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
               </div>
             </div>
           </div>
@@ -98,10 +90,7 @@ export default function RevisionPage() {
     );
   };
 
-  // Sort by dueDate (bigint nanoseconds) — convert to number for comparison
-  const sortedPending = [...pending].sort(
-    (a, b) => Number(a.dueDate) - Number(b.dueDate)
-  );
+  const sortedPending = [...pending].sort((a, b) => a.dueDate - b.dueDate);
 
   return (
     <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-6">
@@ -155,8 +144,8 @@ export default function RevisionPage() {
               </Card>
             ) : (
               <div className="space-y-2">
-                {sortedPending.map((task) => (
-                  <RevisionCard key={String(task.id)} task={task} />
+                {sortedPending.map(task => (
+                  <RevisionCard key={task.id} task={task} />
                 ))}
               </div>
             )}
@@ -170,8 +159,8 @@ export default function RevisionPage() {
                 Completed ({completed.length})
               </h2>
               <div className="space-y-2">
-                {completed.map((task) => (
-                  <RevisionCard key={String(task.id)} task={task} />
+                {completed.map(task => (
+                  <RevisionCard key={task.id} task={task} />
                 ))}
               </div>
             </div>

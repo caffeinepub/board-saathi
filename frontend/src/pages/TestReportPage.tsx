@@ -1,34 +1,22 @@
 import { useParams, useNavigate } from '@tanstack/react-router';
-import { ArrowLeft, Trophy, Clock, CheckCircle2, XCircle } from 'lucide-react';
+import { CheckCircle2, XCircle, ArrowLeft, Trophy, Clock, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useGetTestAttemptsForTest } from '../hooks/useQueries';
 
-function getScoreColor(pct: number): string {
-  if (pct >= 80) return 'text-green-600';
-  if (pct >= 60) return 'text-yellow-600';
-  return 'text-red-600';
-}
-
-function formatTime(secs: number): string {
-  const m = Math.floor(secs / 60).toString().padStart(2, '0');
-  const s = (secs % 60).toString().padStart(2, '0');
-  return `${m}:${s}`;
-}
-
 export default function TestReportPage() {
   const { testId: testIdStr } = useParams({ from: '/layout/mock-tests/$testId/report' });
   const navigate = useNavigate();
-  const testIdBig = BigInt(testIdStr);
+  const testIdNum = parseInt(testIdStr, 10);
 
-  const { data: attempts = [], isLoading } = useGetTestAttemptsForTest(testIdBig);
+  const { data: attempts = [], isLoading } = useGetTestAttemptsForTest(testIdNum);
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin w-8 h-8 border-2 border-teal-500 border-t-transparent rounded-full" />
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
   }
@@ -46,12 +34,17 @@ export default function TestReportPage() {
   const attempt = attempts[attempts.length - 1];
   const report = attempt.report;
 
-  // Convert bigint fields to number for display
-  const pct = Number(report.percentage);
-  const score = Number(report.score);
-  const total = Number(report.total);
-  const timeTaken = Number(report.timeTaken);
-  const attemptedAtMs = Number(attempt.attemptedAt) / 1_000_000;
+  const formatTime = (secs: number) => {
+    const m = Math.floor(secs / 60).toString().padStart(2, '0');
+    const s = (secs % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
+  const getScoreColor = (pct: number) => {
+    if (pct >= 80) return 'text-green-600';
+    if (pct >= 60) return 'text-yellow-600';
+    return 'text-red-600';
+  };
 
   return (
     <div className="p-4 md:p-6 max-w-2xl mx-auto">
@@ -62,12 +55,7 @@ export default function TestReportPage() {
         <div>
           <h1 className="text-xl font-bold">{report.testName}</h1>
           <p className="text-sm text-muted-foreground">
-            Attempt #{attempts.length} ·{' '}
-            {new Date(attemptedAtMs).toLocaleDateString('en-IN', {
-              day: 'numeric',
-              month: 'short',
-              year: 'numeric',
-            })}
+            Attempt #{attempts.length} · {new Date(attempt.attemptedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
           </p>
         </div>
       </div>
@@ -77,21 +65,21 @@ export default function TestReportPage() {
         <CardContent className="p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="text-center">
-              <p className={`text-4xl font-bold ${getScoreColor(pct)}`}>{pct}%</p>
+              <p className={`text-4xl font-bold ${getScoreColor(report.percentage)}`}>
+                {report.percentage}%
+              </p>
               <p className="text-sm text-muted-foreground mt-1">
-                {score}/{total} correct
+                {report.score}/{report.total} correct
               </p>
             </div>
-            <Trophy className={`w-12 h-12 ${getScoreColor(pct)}`} />
+            <Trophy className={`w-12 h-12 ${getScoreColor(report.percentage)}`} />
           </div>
-          <Progress value={pct} className="h-3 mb-3" />
+          <Progress value={report.percentage} className="h-3 mb-3" />
           <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <span>
-              Score: {score}/{total}
-            </span>
+            <span>Score: {report.score}/{report.total}</span>
             <div className="flex items-center gap-1">
               <Clock className="w-3.5 h-3.5" />
-              <span>{formatTime(timeTaken)}</span>
+              <span>{formatTime(report.timeTaken)}</span>
             </div>
           </div>
         </CardContent>
@@ -106,15 +94,13 @@ export default function TestReportPage() {
           <CardContent className="pt-0">
             <div className="space-y-2">
               {attempts.map((a, idx) => (
-                <div key={String(a.id)} className="flex items-center justify-between text-sm">
+                <div key={a.id} className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Attempt #{idx + 1}</span>
                   <div className="flex items-center gap-2">
-                    <span className={`font-medium ${getScoreColor(Number(a.report.percentage))}`}>
-                      {Number(a.report.percentage)}%
+                    <span className={`font-medium ${getScoreColor(a.report.percentage)}`}>
+                      {a.report.percentage}%
                     </span>
-                    <span className="text-muted-foreground text-xs">
-                      {formatTime(Number(a.report.timeTaken))}
-                    </span>
+                    <span className="text-muted-foreground text-xs">{formatTime(a.report.timeTaken)}</span>
                   </div>
                 </div>
               ))}
@@ -125,57 +111,41 @@ export default function TestReportPage() {
 
       {/* Question breakdown */}
       <div>
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-          Question Breakdown
-        </h2>
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Question Breakdown</h2>
         <div className="space-y-3">
-          {report.results.map((result, idx) => {
-            const selectedOpt = Number(result.selectedOption);
-            const correctOpt = Number(result.correctOption);
-            const notAnswered = selectedOpt === 999;
-            return (
-              <Card
-                key={String(result.questionId)}
-                className={result.isCorrect ? 'border-green-200' : 'border-red-200'}
-              >
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-3">
-                    {result.isCorrect ? (
-                      <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                    ) : (
-                      <XCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium mb-2">
-                        Q{idx + 1}. {result.questionText}
-                      </p>
-                      <div className="space-y-1 text-xs">
-                        {!notAnswered && (
-                          <p className={result.isCorrect ? 'text-green-600' : 'text-red-600'}>
-                            Your answer: Option {String.fromCharCode(65 + selectedOpt)}
-                          </p>
-                        )}
-                        {notAnswered && (
-                          <p className="text-muted-foreground">Not answered</p>
-                        )}
-                        {!result.isCorrect && (
-                          <p className="text-green-600">
-                            Correct: Option {String.fromCharCode(65 + correctOpt)}
-                          </p>
-                        )}
-                      </div>
+          {report.results.map((result, idx) => (
+            <Card key={result.questionId} className={result.isCorrect ? 'border-green-200' : 'border-red-200'}>
+              <CardContent className="p-4">
+                <div className="flex items-start gap-3">
+                  {result.isCorrect
+                    ? <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                    : <XCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                  }
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium mb-2">Q{idx + 1}. {result.questionText}</p>
+                    <div className="space-y-1 text-xs">
+                      {result.selectedOption !== 999 && (
+                        <p className={result.isCorrect ? 'text-green-600' : 'text-red-600'}>
+                          Your answer: Option {String.fromCharCode(65 + result.selectedOption)}
+                        </p>
+                      )}
+                      {result.selectedOption === 999 && (
+                        <p className="text-muted-foreground">Not answered</p>
+                      )}
+                      {!result.isCorrect && (
+                        <p className="text-green-600">
+                          Correct: Option {String.fromCharCode(65 + result.correctOption)}
+                        </p>
+                      )}
                     </div>
-                    <Badge
-                      variant={result.isCorrect ? 'default' : 'destructive'}
-                      className="text-xs flex-shrink-0"
-                    >
-                      {result.isCorrect ? '+1' : '0'}
-                    </Badge>
                   </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+                  <Badge variant={result.isCorrect ? 'default' : 'destructive'} className="text-xs flex-shrink-0">
+                    {result.isCorrect ? '+1' : '0'}
+                  </Badge>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       </div>
 
@@ -183,12 +153,7 @@ export default function TestReportPage() {
         <Button
           variant="outline"
           className="flex-1"
-          onClick={() =>
-            navigate({
-              to: '/mock-tests/$testId/attempt',
-              params: { testId: testIdStr },
-            })
-          }
+          onClick={() => navigate({ to: '/mock-tests/$testId/attempt', params: { testId: testIdStr } })}
         >
           Retry Test
         </Button>

@@ -1,22 +1,89 @@
 {
   "schemaVersion": "1.0.0",
   "projectStateVersion": 3,
-  "summary": "New project",
-  "architectural_notes": [],
+  "summary": "Educational app with student and parent portals. Students can register, upload notes, create questions, mock tests, flashcards, and question banks. Parents can log in using their own username and their child's password to view the child's full academic progress, and send comments/feedback that appear as notifications on the student's profile.",
+  "architectural_notes": [
+    "Parent login uses parent's own username + student's registered password as authentication credentials",
+    "Student notifications bar must support incoming parent comments/feedback messages"
+  ],
   "known_issues": [],
   "isFixRequest": false,
   "existing_features": [
     {
-      "id": "feature-revert-all-frontend-visual-styling-changes-introduced-in-the-most-recent-session-version-10-including-sidebar-background-colour-changes-made-by-dev-badge-styling-colours-any-widget-colour-overrides-and-any-other-cosmetic-modifications-made-in-that-session-restoring-them-to-their-prior-state",
-      "title": "Revert all frontend visual/styling changes introduced in the most recent session (Version 10), including: sidebar background colour changes, 'Made by DEV' badge styling/colours, any widget colour overrides, and any other cosmetic modifications made in that session — restoring them to their prior state.",
+      "id": "feature-add-a-parent-account-section-to-the-localstorage-data-layer-store-parent-accounts-with-fields-parentusername-passwordhash-childusername-where-childusername-links-to-a-registered-student-account-add-functions-createparentaccount-parentusername-childpassword-childusername-parentlogin-parentusername-childpassword-that-validates-by-matching-childpassword-against-the-linked-student-s-stored-password-hash-getparentsession-setparentsession-clearparentsession-and-getlinkedchilddata-parentusername-that-returns-the-child-student-s-full-profile-and-all-associated-data-subjects-chapters-notes-questions-mock-tests-with-attempt-history-flashcards-with-usage-counts-question-bank-entries-planner-tasks-targets-streaks-progress-stats",
+      "title": "Add a 'Parent Account' section to the localStorage data layer: store parent accounts with fields { parentUsername, passwordHash, childUsername } where childUsername links to a registered student account. Add functions: createParentAccount(parentUsername, childPassword, childUsername), parentLogin(parentUsername, childPassword) that validates by matching childPassword against the linked student's stored password hash, getParentSession(), setParentSession(), clearParentSession(), and getLinkedChildData(parentUsername) that returns the child student's full profile and all associated data (subjects, chapters, notes, questions, mock tests with attempt history, flashcards with usage counts, question bank entries, planner tasks, targets, streaks, progress stats).",
       "reqIds": [
         "REQ-1"
       ],
       "version": 1
+    },
+    {
+      "id": "feature-on-the-loginpage-add-two-new-buttons-below-the-existing-student-login-register-buttons-login-as-parent-and-create-parent-account-create-parent-account-opens-a-dialog-modal-with-fields-parent-username-child-s-username-the-registered-student-and-child-s-password-for-verification-on-submission-validate-that-the-child-username-exists-and-the-password-matches-then-create-the-parent-account-login-as-parent-opens-a-dialog-with-fields-parent-username-and-child-s-password-authenticates-via-parentlogin-and-on-success-redirects-to-the-parent-dashboard-route",
+      "title": "On the LoginPage, add two new buttons below the existing student login/register buttons: 'Login as Parent' and 'Create Parent Account'. 'Create Parent Account' opens a dialog/modal with fields: Parent Username, Child's Username (the registered student), and Child's Password (for verification). On submission, validate that the child username exists and the password matches, then create the parent account. 'Login as Parent' opens a dialog with fields: Parent Username and Child's Password, authenticates via parentLogin(), and on success redirects to the Parent Dashboard route.",
+      "reqIds": [
+        "REQ-2"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-create-a-new-parent-dashboard-page-route-parent-dashboard-at-the-top-of-the-page-display-the-parent-s-username-prominently-and-directly-beneath-it-display-the-child-s-full-name-with-a-label-like-viewing-child-s-name-throughout-the-page-all-content-labels-must-use-personalized-phrasing-such-as-your-son-daughter-name-s-subjects-your-son-daughter-name-s-mock-tests-etc-substituting-the-child-s-actual-name-and-using-son-or-daughter-based-on-data-available-default-to-child-if-gender-is-not-stored-the-dashboard-must-include-the-following-sections-1-overall-performance-summary-card-showing-chapter-completion-average-mock-test-score-study-streak-and-targets-met-2-subjects-list-showing-all-subjects-with-chapter-progress-bars-3-uploaded-notes-count-per-subject-chapter-with-the-ability-to-see-note-titles-4-questions-added-per-chapter-5-mock-tests-list-all-mock-tests-with-status-attempted-or-not-attempted-best-score-and-attempt-count-6-flashcards-show-total-flashcard-count-and-how-many-times-each-card-has-been-reviewed-flipped-7-question-bank-list-of-all-questions-in-the-question-bank-filtered-by-subject-chapter-8-a-comment-box-section-in-a-prominent-center-position-on-the-dashboard-with-a-label-send-feedback-to-child-s-name-and-three-styled-buttons-scold-comment-appreciate-that-pre-fill-the-textarea-with-a-tone-prefix-e-g-scold-comment-appreciate-plus-a-text-area-for-the-message-and-a-send-button",
+      "title": "Create a new Parent Dashboard page (route: /parent-dashboard). At the top of the page, display the parent's username prominently, and directly beneath it display the child's full name with a label like 'Viewing: [Child's Name]'. Throughout the page, all content labels must use personalized phrasing such as 'Your son/daughter [Name]'s subjects', 'Your son/daughter [Name]'s mock tests', etc., substituting the child's actual name and using 'son' or 'daughter' based on data available (default to 'child' if gender is not stored). The dashboard must include the following sections: (1) Overall Performance summary card showing chapter completion %, average mock test score, study streak, and targets met. (2) Subjects list showing all subjects with chapter progress bars. (3) Uploaded Notes count per subject/chapter with the ability to see note titles. (4) Questions added per chapter. (5) Mock Tests — list all mock tests with status 'Attempted' or 'Not Attempted', best score, and attempt count. (6) Flashcards — show total flashcard count and how many times each card has been reviewed/flipped. (7) Question Bank — list of all questions in the question bank filtered by subject/chapter. (8) A Comment Box section in a prominent center position on the dashboard with a label 'Send feedback to [Child's Name]' and three styled buttons: 'Scold 😠', 'Comment 💬', 'Appreciate 🌟' that pre-fill the textarea with a tone prefix (e.g., '⚠️ [Scold]: ', '💬 [Comment]: ', '🌟 [Appreciate]: '), plus a text area for the message and a Send button.",
+      "reqIds": [
+        "REQ-3"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-implement-a-notification-system-in-localstorage-add-functions-addnotification-username-notification-id-from-type-scold-comment-appreciate-message-timestamp-read-false-and-getnotifications-username-marknotificationread-username-notificationid-when-a-parent-sends-a-comment-from-the-parent-dashboard-call-addnotification-targeting-the-child-student-s-username-in-the-student-facing-layout-sidebar-header-add-a-notification-bell-icon-that-shows-an-unread-count-badge-clicking-it-opens-a-dropdown-panel-listing-all-notifications-with-sender-from-parent-username-type-badge-scold-comment-appreciate-with-appropriate-color-message-text-and-timestamp-clicking-a-notification-marks-it-as-read-and-clears-the-badge-count",
+      "title": "Implement a notification system in localStorage: add functions addNotification(username, notification: { id, from, type: 'scold'|'comment'|'appreciate', message, timestamp, read: false }) and getNotifications(username), markNotificationRead(username, notificationId). When a parent sends a comment from the Parent Dashboard, call addNotification() targeting the child student's username. In the student-facing Layout (sidebar/header), add a notification bell icon that shows an unread count badge. Clicking it opens a dropdown/panel listing all notifications with sender ('From: [Parent Username]'), type badge (Scold/Comment/Appreciate with appropriate color), message text, and timestamp. Clicking a notification marks it as read and clears the badge count.",
+      "reqIds": [
+        "REQ-4"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-add-the-parent-dashboard-route-parent-dashboard-to-the-tanstack-router-configuration-in-app-tsx-the-route-must-be-protected-if-no-parent-session-is-active-redirect-to-login-include-a-logout-option-on-the-parent-dashboard-that-clears-the-parent-session-and-redirects-to-login-do-not-alter-any-existing-student-routes-or-auth-guards",
+      "title": "Add the Parent Dashboard route (/parent-dashboard) to the TanStack Router configuration in App.tsx. The route must be protected: if no parent session is active, redirect to /login. Include a logout option on the Parent Dashboard that clears the parent session and redirects to /login. Do not alter any existing student routes or auth guards.",
+      "reqIds": [
+        "REQ-5"
+      ],
+      "version": 1
     }
   ],
-  "new_feature_requests": [],
-  "projectName": "Revert recent widget colour and visual changes",
+  "new_feature_requests": [
+    {
+      "id": "AR-1",
+      "summary": "Add 'Login as Parent' and 'Create Parent Account' buttons on the login page",
+      "reqIds": [],
+      "status": "pending"
+    },
+    {
+      "id": "AR-2",
+      "summary": "Parent authentication using parent's username + child's registered password",
+      "reqIds": [],
+      "status": "pending"
+    },
+    {
+      "id": "AR-3",
+      "summary": "Parent dashboard showing child's progress, subjects, uploaded notes, questions, mock tests (given or not), flashcard usage count, question bank, and overall performance",
+      "reqIds": [],
+      "status": "pending"
+    },
+    {
+      "id": "AR-4",
+      "summary": "Parent dashboard header shows parent username with child's name beneath it; all content uses 'your son/daughter (name)' phrasing",
+      "reqIds": [],
+      "status": "pending"
+    },
+    {
+      "id": "AR-5",
+      "summary": "Comment box on parent dashboard with options to scold, comment, or appreciate; message sent to student as a notification",
+      "reqIds": [],
+      "status": "pending"
+    }
+  ],
+  "gameProjectType": "none",
+  "projectName": "Board Saathi",
   "clarification_mode": "instant",
   "clarification_rounds": 0
 }

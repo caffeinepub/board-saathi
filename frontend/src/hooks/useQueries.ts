@@ -1,119 +1,100 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useActor } from './useActor';
-import type {
-  UserProfile,
-  Target,
-  Subject,
-  Chapter,
-  Note,
-  Question,
-  PlannerTask,
-  Reminder,
-  MockTest,
-  MCQQuestion,
-  MCQAnswer,
-  TestAttempt,
-  RevisionTask,
-  Flashcard,
-  StudyStreak,
-  UserAchievement,
-  ProgressSummary,
-  PersonalBest,
-} from '../backend';
+import {
+  getCurrentUserId,
+  getSubjects,
+  saveSubjects,
+  getChapters,
+  saveChapters,
+  getNotes,
+  saveNotes,
+  getQuestions,
+  saveQuestions,
+  getFlashcards,
+  saveFlashcards,
+  getMockTests,
+  saveMockTests,
+  getTestAttempts,
+  saveTestAttempts,
+  getPlannerTasks,
+  savePlannerTasks,
+  getReminders,
+  saveReminders,
+  getTargets,
+  saveTargets,
+  getRevisionTasks,
+  saveRevisionTasks,
+  getStudyStreak,
+  getAchievements,
+  getUserAccountById,
+  saveUserAccount,
+  updateStreak,
+  scheduleRevisionTasks,
+  getNextId,
+  initializeUserData,
+} from '../utils/localStorageService';
 
-// ─── Local types ─────────────────────────────────────────────────────────────
+export type {
+  LocalSubject,
+  LocalChapter,
+  LocalNote,
+  LocalQuestion,
+  LocalFlashcard,
+  LocalMockTest,
+  LocalMCQQuestion,
+  LocalTestAttempt,
+  LocalTestReport,
+  LocalPlannerTask,
+  LocalReminder,
+  LocalTarget,
+  LocalRevisionTask,
+  LocalStudyStreak,
+  LocalAchievement,
+} from '../utils/localStorageService';
 
-export interface LocalReminder {
-  id: number;
-  text: string;
-  dateTime: number; // ms
-  alarmSound?: string;
-  targetId?: number;
+// Helper to get current user ID safely
+function useUserId(): string {
+  return getCurrentUserId() || 'guest';
 }
 
-export interface LocalTarget {
-  id: number;
-  title: string;
-  description: string;
-  deadline: number; // ms
-  completed: boolean;
+// ─── User Profile ───────────────────────────────────────────────────────────
+
+export interface UserProfile {
+  username: string;
+  name: string;
+  school: string;
+  studentClass: number;
 }
-
-// ─── localStorage helpers ────────────────────────────────────────────────────
-
-const REMINDERS_KEY = 'board_saathi_reminders';
-const TARGETS_KEY = 'board_saathi_targets';
-const USER_KEY = 'board_saathi_user';
-
-function getStoredReminders(): LocalReminder[] {
-  try {
-    const raw = localStorage.getItem(REMINDERS_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveStoredReminders(reminders: LocalReminder[]): void {
-  localStorage.setItem(REMINDERS_KEY, JSON.stringify(reminders));
-}
-
-function getStoredTargets(): LocalTarget[] {
-  try {
-    const raw = localStorage.getItem(TARGETS_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveStoredTargets(targets: LocalTarget[]): void {
-  localStorage.setItem(TARGETS_KEY, JSON.stringify(targets));
-}
-
-export function getStoredUser(): { name: string; username: string } | null {
-  try {
-    const raw = localStorage.getItem(USER_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
-export function storeUser(user: { name: string; username: string }): void {
-  localStorage.setItem(USER_KEY, JSON.stringify(user));
-}
-
-// ─── User Profile ────────────────────────────────────────────────────────────
 
 export function useGetCallerUserProfile() {
-  const { actor, isFetching: actorFetching } = useActor();
+  const userId = useUserId();
 
-  const query = useQuery<UserProfile | null>({
-    queryKey: ['currentUserProfile'],
-    queryFn: async () => {
-      if (!actor) throw new Error('Actor not available');
-      return actor.getCallerUserProfile();
+  return useQuery<UserProfile | null>({
+    queryKey: ['currentUserProfile', userId],
+    queryFn: () => {
+      if (!userId || userId === 'guest') return null;
+      const account = getUserAccountById(userId);
+      if (!account) return null;
+      return {
+        username: account.username,
+        name: account.name,
+        school: account.school,
+        studentClass: account.studentClass,
+      };
     },
-    enabled: !!actor && !actorFetching,
-    retry: false,
+    enabled: true,
   });
-
-  return {
-    ...query,
-    isLoading: actorFetching || query.isLoading,
-    isFetched: !!actor && query.isFetched,
-  };
 }
 
 export function useSaveCallerUserProfile() {
-  const { actor } = useActor();
   const queryClient = useQueryClient();
+  const userId = useUserId();
 
   return useMutation({
     mutationFn: async (profile: UserProfile) => {
-      if (!actor) throw new Error('Actor not available');
-      return actor.saveCallerUserProfile(profile);
+      if (!userId || userId === 'guest') throw new Error('Not authenticated');
+      const account = getUserAccountById(userId);
+      if (!account) throw new Error('Account not found');
+      saveUserAccount({ ...account, name: profile.name, school: profile.school, studentClass: profile.studentClass });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['currentUserProfile'] });
@@ -121,49 +102,32 @@ export function useSaveCallerUserProfile() {
   });
 }
 
-export function useRegister() {
-  const { actor } = useActor();
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (params: {
-      username: string;
-      name: string;
-      school: string;
-      studentClass: bigint;
-    }) => {
-      if (!actor) throw new Error('Actor not available');
-      return actor.register(params.username, params.name, params.school, params.studentClass);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['currentUserProfile'] });
-    },
-  });
-}
-
-// ─── Subjects ────────────────────────────────────────────────────────────────
+// ─── Subjects ───────────────────────────────────────────────────────────────
 
 export function useGetSubjects() {
-  const { actor, isFetching } = useActor();
+  const userId = useUserId();
 
-  return useQuery<Subject[]>({
-    queryKey: ['subjects'],
-    queryFn: async () => {
-      if (!actor) return [];
-      return actor.getSubjects();
+  return useQuery({
+    queryKey: ['subjects', userId],
+    queryFn: () => {
+      initializeUserData(userId);
+      return getSubjects(userId);
     },
-    enabled: !!actor && !isFetching,
+    enabled: true,
   });
 }
 
 export function useAddSubject() {
-  const { actor } = useActor();
   const queryClient = useQueryClient();
+  const userId = useUserId();
 
   return useMutation({
     mutationFn: async (name: string) => {
-      if (!actor) throw new Error('Actor not available');
-      return actor.addSubject(name);
+      const subjects = getSubjects(userId);
+      const id = getNextId(userId, 'subject');
+      const newSubject = { id, name };
+      saveSubjects(userId, [...subjects, newSubject]);
+      return id;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['subjects'] });
@@ -171,535 +135,293 @@ export function useAddSubject() {
   });
 }
 
-// ─── Chapters ────────────────────────────────────────────────────────────────
+// ─── Chapters ───────────────────────────────────────────────────────────────
 
-export function useGetChapters(subjectId: bigint) {
-  const { actor, isFetching } = useActor();
+export function useGetChaptersForSubject(subjectId: number) {
+  const userId = useUserId();
 
-  return useQuery<Chapter[]>({
-    queryKey: ['chapters', String(subjectId)],
-    queryFn: async () => {
-      if (!actor) return [];
-      return actor.getChaptersForSubject(subjectId);
+  return useQuery({
+    queryKey: ['chapters', userId, subjectId],
+    queryFn: () => {
+      const all = getChapters(userId);
+      return all.filter(c => c.subjectId === subjectId);
     },
-    enabled: !!actor && !isFetching,
+    enabled: subjectId > 0,
   });
 }
 
-/** Alias for pages that import useGetChaptersForSubject */
-export const useGetChaptersForSubject = useGetChapters;
-
-/** Fetch all chapters across all subjects (fetches per-subject and merges) */
 export function useGetAllChapters() {
-  const { actor, isFetching } = useActor();
-  const { data: subjects = [] } = useGetSubjects();
+  const userId = useUserId();
 
-  return useQuery<Chapter[]>({
-    queryKey: ['allChapters', subjects.map((s) => String(s.id)).join(',')],
-    queryFn: async () => {
-      if (!actor || subjects.length === 0) return [];
-      const results = await Promise.all(
-        subjects.map((s) => actor.getChaptersForSubject(s.id))
-      );
-      return results.flat();
-    },
-    enabled: !!actor && !isFetching && subjects.length > 0,
+  return useQuery({
+    queryKey: ['chapters', userId],
+    queryFn: () => getChapters(userId),
   });
 }
 
 export function useAddChapter() {
-  const { actor } = useActor();
   const queryClient = useQueryClient();
+  const userId = useUserId();
 
   return useMutation({
-    mutationFn: async (params: { subjectId: bigint; name: string; weightage: bigint }) => {
-      if (!actor) throw new Error('Actor not available');
-      return actor.addChapter(params.subjectId, params.name, params.weightage);
+    mutationFn: async ({ subjectId, name, weightage }: { subjectId: number; name: string; weightage: number }) => {
+      const chapters = getChapters(userId);
+      const id = getNextId(userId, 'chapter');
+      const newChapter = { id, subjectId, name, weightage, completed: false };
+      saveChapters(userId, [...chapters, newChapter]);
+      return id;
     },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['chapters', String(variables.subjectId)] });
-      queryClient.invalidateQueries({ queryKey: ['allChapters'] });
-      queryClient.invalidateQueries({ queryKey: ['progress'] });
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['chapters'] });
     },
   });
 }
 
 export function useMarkChapterCompleted() {
-  const { actor } = useActor();
   const queryClient = useQueryClient();
+  const userId = useUserId();
 
   return useMutation({
-    mutationFn: async (params: { chapterId: bigint; completed: boolean; subjectId: bigint }) => {
-      if (!actor) throw new Error('Actor not available');
-      return actor.markChapterCompleted(params.chapterId, params.completed);
+    mutationFn: async ({ chapterId, completed }: { chapterId: number; completed: boolean }) => {
+      const chapters = getChapters(userId);
+      const chapter = chapters.find(c => c.id === chapterId);
+      const updated = chapters.map(c => c.id === chapterId ? { ...c, completed } : c);
+      saveChapters(userId, updated);
+      if (completed && chapter && !chapter.completed) {
+        scheduleRevisionTasks(userId, chapterId, chapter.subjectId);
+        updateStreak(userId);
+      }
     },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['chapters', String(variables.subjectId)] });
-      queryClient.invalidateQueries({ queryKey: ['allChapters'] });
-      queryClient.invalidateQueries({ queryKey: ['progress'] });
-      queryClient.invalidateQueries({ queryKey: ['streak'] });
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['chapters'] });
       queryClient.invalidateQueries({ queryKey: ['revisionTasks'] });
+      queryClient.invalidateQueries({ queryKey: ['plannerTasks'] });
+      queryClient.invalidateQueries({ queryKey: ['streak'] });
     },
   });
 }
 
-// ─── Notes ───────────────────────────────────────────────────────────────────
+// ─── Notes ──────────────────────────────────────────────────────────────────
 
-export function useGetNotes(chapterId: bigint) {
-  const { actor, isFetching } = useActor();
+export function useGetNotesForChapter(chapterId: number) {
+  const userId = useUserId();
 
-  return useQuery<Note[]>({
-    queryKey: ['notes', String(chapterId)],
-    queryFn: async () => {
-      if (!actor) return [];
-      return actor.getNotesForChapter(chapterId);
+  return useQuery({
+    queryKey: ['notes', userId, chapterId],
+    queryFn: () => {
+      const all = getNotes(userId);
+      return all.filter(n => n.chapterId === chapterId);
     },
-    enabled: !!actor && !isFetching,
+    enabled: chapterId > 0,
   });
 }
-
-/** Alias for components that import useGetNotesForChapter */
-export const useGetNotesForChapter = useGetNotes;
 
 export function useAddNote() {
-  const { actor } = useActor();
   const queryClient = useQueryClient();
+  const userId = useUserId();
 
   return useMutation({
-    mutationFn: async (params: { chapterId: bigint; content: string; imageData: string | null }) => {
-      if (!actor) throw new Error('Actor not available');
-      return actor.addNote(params.chapterId, params.content, params.imageData);
+    mutationFn: async ({ chapterId, content, imageData }: { chapterId: number; content: string; imageData?: string }) => {
+      const notes = getNotes(userId);
+      const id = getNextId(userId, 'note');
+      const newNote = { id, chapterId, content, imageData, createdAt: Date.now() };
+      saveNotes(userId, [...notes, newNote]);
+      return id;
     },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['notes', String(variables.chapterId)] });
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notes'] });
     },
   });
 }
 
 export function useDeleteNote() {
-  const { actor } = useActor();
   const queryClient = useQueryClient();
+  const userId = useUserId();
 
   return useMutation({
-    mutationFn: async (params: { noteId: bigint; chapterId: bigint }) => {
-      if (!actor) throw new Error('Actor not available');
-      return actor.deleteNote(params.noteId);
+    mutationFn: async (noteId: number) => {
+      const notes = getNotes(userId);
+      saveNotes(userId, notes.filter(n => n.id !== noteId));
     },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['notes', String(variables.chapterId)] });
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notes'] });
     },
   });
 }
 
-// ─── Questions ───────────────────────────────────────────────────────────────
+// ─── Questions ──────────────────────────────────────────────────────────────
 
-export function useGetQuestions(chapterId: bigint) {
-  const { actor, isFetching } = useActor();
+export function useGetQuestionsForChapter(chapterId: number) {
+  const userId = useUserId();
 
-  return useQuery<Question[]>({
-    queryKey: ['questions', String(chapterId)],
-    queryFn: async () => {
-      if (!actor) return [];
-      return actor.getQuestionsForChapter(chapterId);
+  return useQuery({
+    queryKey: ['questions', userId, chapterId],
+    queryFn: () => {
+      const all = getQuestions(userId);
+      return all.filter(q => q.chapterId === chapterId);
     },
-    enabled: !!actor && !isFetching,
+    enabled: chapterId > 0,
   });
 }
 
-/** Alias for components that import useGetQuestionsForChapter */
-export const useGetQuestionsForChapter = useGetQuestions;
+export function useGetQuestionBank(subjectIdFilter?: number, chapterIdFilter?: number) {
+  const userId = useUserId();
+
+  return useQuery({
+    queryKey: ['questionBank', userId, subjectIdFilter, chapterIdFilter],
+    queryFn: () => {
+      const all = getQuestions(userId);
+      return all.filter(q => {
+        const subjectMatch = subjectIdFilter ? q.subjectId === subjectIdFilter : true;
+        const chapterMatch = chapterIdFilter ? q.chapterId === chapterIdFilter : true;
+        return subjectMatch && chapterMatch;
+      });
+    },
+  });
+}
 
 export function useAddQuestion() {
-  const { actor } = useActor();
   const queryClient = useQueryClient();
+  const userId = useUserId();
 
   return useMutation({
-    mutationFn: async (params: {
-      chapterId: bigint;
-      subjectId: bigint;
-      questionText: string;
-      answer: string;
-    }) => {
-      if (!actor) throw new Error('Actor not available');
-      return actor.addQuestion(params.chapterId, params.subjectId, params.questionText, params.answer);
+    mutationFn: async ({ chapterId, subjectId, questionText, answer }: { chapterId: number; subjectId: number; questionText: string; answer: string }) => {
+      const questions = getQuestions(userId);
+      const id = getNextId(userId, 'question');
+      const newQuestion = { id, chapterId, subjectId, questionText, answer };
+      saveQuestions(userId, [...questions, newQuestion]);
+      return id;
     },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['questions', String(variables.chapterId)] });
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['questions'] });
       queryClient.invalidateQueries({ queryKey: ['questionBank'] });
     },
   });
 }
 
 export function useDeleteQuestion() {
-  const { actor } = useActor();
   const queryClient = useQueryClient();
+  const userId = useUserId();
 
   return useMutation({
-    mutationFn: async (params: { questionId: bigint; chapterId: bigint }) => {
-      if (!actor) throw new Error('Actor not available');
-      return actor.deleteQuestion(params.questionId);
+    mutationFn: async (questionId: number) => {
+      const questions = getQuestions(userId);
+      saveQuestions(userId, questions.filter(q => q.id !== questionId));
     },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['questions', String(variables.chapterId)] });
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['questions'] });
       queryClient.invalidateQueries({ queryKey: ['questionBank'] });
     },
   });
 }
 
-// ─── Question Bank ───────────────────────────────────────────────────────────
+// ─── Flashcards ─────────────────────────────────────────────────────────────
 
-export function useGetQuestionBank(subjectId?: bigint, chapterId?: bigint) {
-  const { actor, isFetching } = useActor();
+export function useGetAllFlashcards() {
+  const userId = useUserId();
 
-  return useQuery<Question[]>({
-    queryKey: ['questionBank', String(subjectId), String(chapterId)],
-    queryFn: async () => {
-      if (!actor) return [];
-      return actor.getQuestionBank(subjectId ?? null, chapterId ?? null);
-    },
-    enabled: !!actor && !isFetching,
+  return useQuery({
+    queryKey: ['flashcards', userId],
+    queryFn: () => getFlashcards(userId),
   });
 }
 
-// ─── Planner ─────────────────────────────────────────────────────────────────
+export function useGetFlashcardsForChapter(chapterId: number) {
+  const userId = useUserId();
 
-export function useGetPlannerTasksForMonth(year: number, month: number) {
-  const { actor, isFetching } = useActor();
-
-  return useQuery<PlannerTask[]>({
-    queryKey: ['plannerMonth', year, month],
-    queryFn: async () => {
-      if (!actor) return [];
-      return actor.getPlannerTasksForMonth(BigInt(year), BigInt(month));
+  return useQuery({
+    queryKey: ['flashcards', userId, chapterId],
+    queryFn: () => {
+      const all = getFlashcards(userId);
+      return all.filter(f => f.chapterId === chapterId);
     },
-    enabled: !!actor && !isFetching,
+    enabled: chapterId > 0,
   });
 }
 
-export function useGetPlannerTasksForDate(year: number, month: number, date: number) {
-  const { actor, isFetching } = useActor();
-
-  return useQuery<PlannerTask[]>({
-    queryKey: ['plannerDate', year, month, date],
-    queryFn: async () => {
-      if (!actor) return [];
-      const d = new Date(year, month - 1, date);
-      const ts = BigInt(d.getTime()) * BigInt(1_000_000);
-      return actor.getPlannerTasksForDate(ts);
-    },
-    enabled: !!actor && !isFetching,
-  });
-}
-
-export function useAddPlannerTask() {
-  const { actor } = useActor();
+export function useAddFlashcard() {
   const queryClient = useQueryClient();
+  const userId = useUserId();
 
   return useMutation({
-    mutationFn: async (params: {
-      title: string;
-      description: string;
-      year: number;
-      month: number;
-      date: number;
-      startTime: string;
-    }) => {
-      if (!actor) throw new Error('Actor not available');
-      const d = new Date(params.year, params.month - 1, params.date);
-      const ts = BigInt(d.getTime()) * BigInt(1_000_000);
-      return actor.addPlannerTask(params.title, params.description, ts, params.startTime);
-    },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['plannerDate', variables.year, variables.month, variables.date] });
-      queryClient.invalidateQueries({ queryKey: ['plannerMonth', variables.year, variables.month] });
-      queryClient.invalidateQueries({ queryKey: ['progress'] });
-    },
-  });
-}
-
-export function useCompletePlannerTask() {
-  const { actor } = useActor();
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (params: {
-      taskId: bigint;
-      completed: boolean;
-      year: number;
-      month: number;
-      date: number;
-    }) => {
-      if (!actor) throw new Error('Actor not available');
-      return actor.completePlannerTask(params.taskId, params.completed);
-    },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['plannerDate', variables.year, variables.month, variables.date] });
-      queryClient.invalidateQueries({ queryKey: ['plannerMonth', variables.year, variables.month] });
-      queryClient.invalidateQueries({ queryKey: ['progress'] });
-      queryClient.invalidateQueries({ queryKey: ['streak'] });
-    },
-  });
-}
-
-export function useDeletePlannerTask() {
-  const { actor } = useActor();
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (params: {
-      taskId: bigint;
-      year: number;
-      month: number;
-      date: number;
-    }) => {
-      if (!actor) throw new Error('Actor not available');
-      return actor.deletePlannerTask(params.taskId);
-    },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['plannerDate', variables.year, variables.month, variables.date] });
-      queryClient.invalidateQueries({ queryKey: ['plannerMonth', variables.year, variables.month] });
-      queryClient.invalidateQueries({ queryKey: ['progress'] });
-    },
-  });
-}
-
-// ─── Reminders ───────────────────────────────────────────────────────────────
-
-export function useGetReminders() {
-  const { actor, isFetching } = useActor();
-
-  return useQuery<LocalReminder[]>({
-    queryKey: ['reminders'],
-    queryFn: async () => {
-      if (!actor) return getStoredReminders();
-      try {
-        const backendReminders = await actor.getReminders();
-        const localReminders: LocalReminder[] = backendReminders.map((r) => ({
-          id: Number(r.id),
-          text: r.text,
-          dateTime: Number(r.dateTime) / 1_000_000,
-          alarmSound: undefined,
-          targetId: r.targetId !== undefined && r.targetId !== null ? Number(r.targetId) : undefined,
-        }));
-        saveStoredReminders(localReminders);
-        return localReminders;
-      } catch {
-        return getStoredReminders();
-      }
-    },
-    enabled: !!actor && !isFetching,
-  });
-}
-
-export function useAddReminder() {
-  const { actor } = useActor();
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (params: {
-      text: string;
-      dateTime: number;
-      alarmSound?: string;
-      targetId?: number;
-    }) => {
-      const localReminders = getStoredReminders();
-      const newId = Date.now();
-      const newReminder: LocalReminder = {
-        id: newId,
-        text: params.text,
-        dateTime: params.dateTime,
-        alarmSound: params.alarmSound,
-        targetId: params.targetId,
-      };
-      saveStoredReminders([...localReminders, newReminder]);
-
-      if (actor) {
-        try {
-          const ts = BigInt(Math.round(params.dateTime)) * BigInt(1_000_000);
-          const targetId = params.targetId !== undefined ? BigInt(params.targetId) : null;
-          await actor.addReminder(params.text, ts, targetId);
-        } catch {
-          // Silently fail backend sync
-        }
-      }
-      return newReminder;
+    mutationFn: async ({ chapterId, subjectId, front, back }: { chapterId: number; subjectId: number; front: string; back: string }) => {
+      const flashcards = getFlashcards(userId);
+      const id = getNextId(userId, 'flashcard');
+      const newCard = { id, chapterId, subjectId, front, back, learned: false };
+      saveFlashcards(userId, [...flashcards, newCard]);
+      return id;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['reminders'] });
+      queryClient.invalidateQueries({ queryKey: ['flashcards'] });
     },
   });
 }
 
-export function useDeleteReminder() {
-  const { actor } = useActor();
+export function useMarkFlashcardLearned() {
   const queryClient = useQueryClient();
+  const userId = useUserId();
 
   return useMutation({
-    mutationFn: async (reminderId: number) => {
-      const localReminders = getStoredReminders();
-      saveStoredReminders(localReminders.filter((r) => r.id !== reminderId));
-
-      if (actor) {
-        try {
-          await actor.deleteReminder(BigInt(reminderId));
-        } catch {
-          // Silently fail backend sync
-        }
-      }
+    mutationFn: async ({ cardId, learned }: { cardId: number; learned: boolean }) => {
+      const flashcards = getFlashcards(userId);
+      saveFlashcards(userId, flashcards.map(f => f.id === cardId ? { ...f, learned } : f));
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['reminders'] });
+      queryClient.invalidateQueries({ queryKey: ['flashcards'] });
     },
   });
 }
 
-// ─── Targets ─────────────────────────────────────────────────────────────────
-
-export function useGetTargets() {
-  const { actor, isFetching } = useActor();
-
-  return useQuery<LocalTarget[]>({
-    queryKey: ['targets'],
-    queryFn: async () => {
-      if (!actor) return getStoredTargets();
-      try {
-        const backendTargets = await actor.getTargets();
-        const localTargets: LocalTarget[] = backendTargets.map((t) => ({
-          id: Number(t.id),
-          title: t.title,
-          description: t.description,
-          deadline: Number(t.deadline) / 1_000_000,
-          completed: t.completed,
-        }));
-        saveStoredTargets(localTargets);
-        return localTargets;
-      } catch {
-        return getStoredTargets();
-      }
-    },
-    enabled: !!actor && !isFetching,
-  });
-}
-
-export function useAddTarget() {
-  const { actor } = useActor();
+export function useDeleteFlashcard() {
   const queryClient = useQueryClient();
+  const userId = useUserId();
 
   return useMutation({
-    mutationFn: async (params: { title: string; description: string; deadline: number }) => {
-      const localTargets = getStoredTargets();
-      const newId = Date.now();
-      const newTarget: LocalTarget = {
-        id: newId,
-        title: params.title,
-        description: params.description,
-        deadline: params.deadline,
-        completed: false,
-      };
-      saveStoredTargets([...localTargets, newTarget]);
-
-      if (actor) {
-        try {
-          const ts = BigInt(Math.round(params.deadline)) * BigInt(1_000_000);
-          await actor.addTarget(params.title, params.description, ts);
-        } catch {
-          // Silently fail backend sync
-        }
-      }
-      return newTarget;
+    mutationFn: async (cardId: number) => {
+      const flashcards = getFlashcards(userId);
+      saveFlashcards(userId, flashcards.filter(f => f.id !== cardId));
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['targets'] });
-      queryClient.invalidateQueries({ queryKey: ['progress'] });
+      queryClient.invalidateQueries({ queryKey: ['flashcards'] });
     },
   });
 }
 
-export function useCompleteTarget() {
-  const { actor } = useActor();
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (params: { targetId: number; completed: boolean }) => {
-      const id = Number(params.targetId);
-      const localTargets = getStoredTargets();
-      saveStoredTargets(localTargets.map((t) => (t.id === id ? { ...t, completed: params.completed } : t)));
-
-      if (actor) {
-        try {
-          await actor.completeTarget(BigInt(id), params.completed);
-        } catch {
-          // Silently fail backend sync
-        }
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['targets'] });
-      queryClient.invalidateQueries({ queryKey: ['progress'] });
-    },
-  });
-}
-
-export function useDeleteTarget() {
-  const { actor } = useActor();
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (targetId: number) => {
-      const localTargets = getStoredTargets();
-      saveStoredTargets(localTargets.filter((t) => t.id !== targetId));
-
-      if (actor) {
-        try {
-          await actor.deleteTarget(BigInt(targetId));
-        } catch {
-          // Silently fail backend sync
-        }
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['targets'] });
-      queryClient.invalidateQueries({ queryKey: ['progress'] });
-    },
-  });
-}
-
-// ─── Mock Tests ──────────────────────────────────────────────────────────────
+// ─── Mock Tests ─────────────────────────────────────────────────────────────
 
 export function useGetMockTests() {
-  const { actor, isFetching } = useActor();
+  const userId = useUserId();
 
-  return useQuery<MockTest[]>({
-    queryKey: ['mockTests'],
-    queryFn: async () => {
-      if (!actor) return [];
-      return actor.getMockTests();
-    },
-    enabled: !!actor && !isFetching,
+  return useQuery({
+    queryKey: ['mockTests', userId],
+    queryFn: () => getMockTests(userId),
   });
 }
 
-export function useGetMockTest(testId: bigint) {
-  const { actor, isFetching } = useActor();
+export function useGetMockTest(testId: number) {
+  const userId = useUserId();
 
-  return useQuery<MockTest | null>({
-    queryKey: ['mockTest', String(testId)],
-    queryFn: async () => {
-      if (!actor) return null;
-      return actor.getMockTest(testId);
+  return useQuery({
+    queryKey: ['mockTest', userId, testId],
+    queryFn: () => {
+      const tests = getMockTests(userId);
+      return tests.find(t => t.id === testId) ?? null;
     },
-    enabled: !!actor && !isFetching,
+    enabled: testId > 0,
   });
 }
 
 export function useCreateMockTest() {
-  const { actor } = useActor();
   const queryClient = useQueryClient();
+  const userId = useUserId();
 
   return useMutation({
-    mutationFn: async (params: { name: string; subjectId: bigint; questions: MCQQuestion[] }) => {
-      if (!actor) throw new Error('Actor not available');
-      return actor.createMockTest(params.name, params.subjectId, params.questions);
+    mutationFn: async ({ name, subjectId, questions }: { name: string; subjectId: number; questions: { id: number; questionText: string; options: string[]; correctOption: number }[] }) => {
+      const tests = getMockTests(userId);
+      const id = getNextId(userId, 'mockTest');
+      const newTest = { id, name, subjectId, questions };
+      saveMockTests(userId, [...tests, newTest]);
+      return id;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mockTests'] });
@@ -708,13 +430,13 @@ export function useCreateMockTest() {
 }
 
 export function useDeleteMockTest() {
-  const { actor } = useActor();
   const queryClient = useQueryClient();
+  const userId = useUserId();
 
   return useMutation({
-    mutationFn: async (testId: bigint) => {
-      if (!actor) throw new Error('Actor not available');
-      return actor.deleteMockTest(testId);
+    mutationFn: async (testId: number) => {
+      const tests = getMockTests(userId);
+      saveMockTests(userId, tests.filter(t => t.id !== testId));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mockTests'] });
@@ -723,165 +445,294 @@ export function useDeleteMockTest() {
 }
 
 export function useSubmitMockTest() {
-  const { actor } = useActor();
   const queryClient = useQueryClient();
+  const userId = useUserId();
 
   return useMutation({
-    mutationFn: async (params: { testId: bigint; answers: MCQAnswer[]; timeTaken: bigint }) => {
-      if (!actor) throw new Error('Actor not available');
-      return actor.submitMockTest(params.testId, params.answers, params.timeTaken);
+    mutationFn: async ({ testId, answers, timeTaken }: { testId: number; answers: { questionId: number; selectedOption: number }[]; timeTaken: number }) => {
+      const tests = getMockTests(userId);
+      const test = tests.find(t => t.id === testId);
+      if (!test) throw new Error('Test not found');
+
+      let score = 0;
+      const results = test.questions.map(q => {
+        const answer = answers.find(a => a.questionId === q.id);
+        const selected = answer ? answer.selectedOption : 999;
+        const isCorrect = selected === q.correctOption;
+        if (isCorrect) score++;
+        return { questionId: q.id, questionText: q.questionText, selectedOption: selected, correctOption: q.correctOption, isCorrect };
+      });
+
+      const total = test.questions.length;
+      const percentage = total === 0 ? 0 : Math.round((score * 100) / total);
+
+      const report = { testId, testName: test.name, score, total, percentage, timeTaken, results };
+      const attempts = getTestAttempts(userId);
+      const id = getNextId(userId, 'testAttempt');
+      const attempt = { id, testId, report, attemptedAt: Date.now() };
+      saveTestAttempts(userId, [...attempts, attempt]);
+      updateStreak(userId);
+      return report;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['testAttempts'] });
-      queryClient.invalidateQueries({ queryKey: ['progress'] });
       queryClient.invalidateQueries({ queryKey: ['streak'] });
     },
   });
 }
 
 export function useGetTestAttempts() {
-  const { actor, isFetching } = useActor();
+  const userId = useUserId();
 
-  return useQuery<TestAttempt[]>({
-    queryKey: ['testAttempts'],
-    queryFn: async () => {
-      if (!actor) return [];
-      return actor.getTestAttempts();
-    },
-    enabled: !!actor && !isFetching,
+  return useQuery({
+    queryKey: ['testAttempts', userId],
+    queryFn: () => getTestAttempts(userId),
   });
 }
 
-export function useGetTestAttemptsForTest(testId: bigint) {
-  const { actor, isFetching } = useActor();
+export function useGetTestAttemptsForTest(testId: number) {
+  const userId = useUserId();
 
-  return useQuery<TestAttempt[]>({
-    queryKey: ['testAttempts', String(testId)],
-    queryFn: async () => {
-      if (!actor) return [];
-      return actor.getTestAttemptsForTest(testId);
+  return useQuery({
+    queryKey: ['testAttempts', userId, testId],
+    queryFn: () => {
+      const all = getTestAttempts(userId);
+      return all.filter(a => a.testId === testId);
     },
-    enabled: !!actor && !isFetching,
+    enabled: testId > 0,
   });
 }
 
-// ─── Revision Tasks ──────────────────────────────────────────────────────────
+// ─── Planner Tasks ──────────────────────────────────────────────────────────
 
-export function useGetRevisionTasks() {
-  const { actor, isFetching } = useActor();
+export function useGetPlannerTasksForMonth(year: number, month: number) {
+  const userId = useUserId();
 
-  return useQuery<RevisionTask[]>({
-    queryKey: ['revisionTasks'],
-    queryFn: async () => {
-      if (!actor) return [];
-      return actor.getRevisionTasks();
-    },
-    enabled: !!actor && !isFetching,
+  return useQuery({
+    queryKey: ['plannerTasks', userId, year, month],
+    queryFn: () => getPlannerTasks(userId),
   });
 }
 
-export function useGetPendingRevisionTasks() {
-  const { actor, isFetching } = useActor();
+export function useGetPlannerTasksForDate(year: number, month: number, date: number) {
+  const userId = useUserId();
 
-  return useQuery<RevisionTask[]>({
-    queryKey: ['pendingRevisionTasks'],
-    queryFn: async () => {
-      if (!actor) return [];
-      return actor.getPendingRevisionTasks();
+  return useQuery({
+    queryKey: ['plannerTasksDate', userId, year, month, date],
+    queryFn: () => {
+      const all = getPlannerTasks(userId);
+      return all.filter(t => {
+        const d = new Date(t.date);
+        return d.getFullYear() === year && d.getMonth() + 1 === month && d.getDate() === date;
+      });
     },
-    enabled: !!actor && !isFetching,
   });
 }
 
-export function useMarkRevisionTaskCompleted() {
-  const { actor } = useActor();
+export function useGetAllPlannerTasks() {
+  const userId = useUserId();
+
+  return useQuery({
+    queryKey: ['plannerTasks', userId],
+    queryFn: () => getPlannerTasks(userId),
+  });
+}
+
+export function useAddPlannerTask() {
   const queryClient = useQueryClient();
+  const userId = useUserId();
 
   return useMutation({
-    mutationFn: async (params: { revisionId: bigint; completed: boolean }) => {
-      if (!actor) throw new Error('Actor not available');
-      return actor.markRevisionTaskCompleted(params.revisionId, params.completed);
+    mutationFn: async ({ title, description, date, startTime }: { title: string; description: string; date: number; startTime: string }) => {
+      const tasks = getPlannerTasks(userId);
+      const id = getNextId(userId, 'plannerTask');
+      const newTask = { id, title, description, date, startTime, completed: false };
+      savePlannerTasks(userId, [...tasks, newTask]);
+      return id;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['revisionTasks'] });
-      queryClient.invalidateQueries({ queryKey: ['pendingRevisionTasks'] });
+      queryClient.invalidateQueries({ queryKey: ['plannerTasks'] });
+      queryClient.invalidateQueries({ queryKey: ['plannerTasksDate'] });
+    },
+  });
+}
+
+export function useCompletePlannerTask() {
+  const queryClient = useQueryClient();
+  const userId = useUserId();
+
+  return useMutation({
+    mutationFn: async ({ taskId, completed }: { taskId: number; completed: boolean }) => {
+      const tasks = getPlannerTasks(userId);
+      savePlannerTasks(userId, tasks.map(t => t.id === taskId ? { ...t, completed } : t));
+      if (completed) updateStreak(userId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['plannerTasks'] });
+      queryClient.invalidateQueries({ queryKey: ['plannerTasksDate'] });
       queryClient.invalidateQueries({ queryKey: ['streak'] });
     },
   });
 }
 
-// ─── Flashcards ──────────────────────────────────────────────────────────────
-
-export function useGetFlashcards(chapterId: bigint) {
-  const { actor, isFetching } = useActor();
-
-  return useQuery<Flashcard[]>({
-    queryKey: ['flashcards', String(chapterId)],
-    queryFn: async () => {
-      if (!actor) return [];
-      return actor.getFlashcardsForChapter(chapterId);
-    },
-    enabled: !!actor && !isFetching,
-  });
-}
-
-export function useGetAllFlashcards() {
-  const { actor, isFetching } = useActor();
-
-  return useQuery<Flashcard[]>({
-    queryKey: ['allFlashcards'],
-    queryFn: async () => {
-      if (!actor) return [];
-      return actor.getAllFlashcards();
-    },
-    enabled: !!actor && !isFetching,
-  });
-}
-
-export function useAddFlashcard() {
-  const { actor } = useActor();
+export function useDeletePlannerTask() {
   const queryClient = useQueryClient();
+  const userId = useUserId();
 
   return useMutation({
-    mutationFn: async (params: { chapterId: bigint; subjectId: bigint; front: string; back: string }) => {
-      if (!actor) throw new Error('Actor not available');
-      return actor.addFlashcard(params.chapterId, params.subjectId, params.front, params.back);
+    mutationFn: async (taskId: number) => {
+      const tasks = getPlannerTasks(userId);
+      savePlannerTasks(userId, tasks.filter(t => t.id !== taskId));
     },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['flashcards', String(variables.chapterId)] });
-      queryClient.invalidateQueries({ queryKey: ['allFlashcards'] });
-    },
-  });
-}
-
-export function useMarkFlashcardLearned() {
-  const { actor } = useActor();
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (params: { cardId: bigint; learned: boolean; chapterId: bigint }) => {
-      if (!actor) throw new Error('Actor not available');
-      return actor.markFlashcardLearned(params.cardId, params.learned);
-    },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['flashcards', String(variables.chapterId)] });
-      queryClient.invalidateQueries({ queryKey: ['allFlashcards'] });
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['plannerTasks'] });
+      queryClient.invalidateQueries({ queryKey: ['plannerTasksDate'] });
     },
   });
 }
 
-export function useDeleteFlashcard() {
-  const { actor } = useActor();
+// ─── Reminders ──────────────────────────────────────────────────────────────
+
+export function useGetReminders() {
+  const userId = useUserId();
+
+  return useQuery({
+    queryKey: ['reminders', userId],
+    queryFn: () => {
+      const all = getReminders(userId);
+      return all.sort((a, b) => a.dateTime - b.dateTime);
+    },
+  });
+}
+
+export function useAddReminder() {
   const queryClient = useQueryClient();
+  const userId = useUserId();
 
   return useMutation({
-    mutationFn: async (params: { cardId: bigint; chapterId: bigint }) => {
-      if (!actor) throw new Error('Actor not available');
-      return actor.deleteFlashcard(params.cardId);
+    mutationFn: async ({ text, dateTime, alarmSound }: { text: string; dateTime: number; alarmSound?: string }) => {
+      const reminders = getReminders(userId);
+      const id = getNextId(userId, 'reminder');
+      const newReminder = { id, text, dateTime, alarmSound };
+      saveReminders(userId, [...reminders, newReminder]);
+      return id;
     },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['flashcards', String(variables.chapterId)] });
-      queryClient.invalidateQueries({ queryKey: ['allFlashcards'] });
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['reminders'] });
+    },
+  });
+}
+
+export function useDeleteReminder() {
+  const queryClient = useQueryClient();
+  const userId = useUserId();
+
+  return useMutation({
+    mutationFn: async (reminderId: number) => {
+      const reminders = getReminders(userId);
+      saveReminders(userId, reminders.filter(r => r.id !== reminderId));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['reminders'] });
+    },
+  });
+}
+
+// ─── Targets ────────────────────────────────────────────────────────────────
+
+export function useGetTargets() {
+  const userId = useUserId();
+
+  return useQuery({
+    queryKey: ['targets', userId],
+    queryFn: () => getTargets(userId),
+  });
+}
+
+export function useAddTarget() {
+  const queryClient = useQueryClient();
+  const userId = useUserId();
+
+  return useMutation({
+    mutationFn: async ({ title, description, deadline }: { title: string; description: string; deadline: number }) => {
+      const targets = getTargets(userId);
+      const id = getNextId(userId, 'target');
+      const newTarget = { id, title, description, deadline, completed: false };
+      saveTargets(userId, [...targets, newTarget]);
+      return id;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['targets'] });
+    },
+  });
+}
+
+export function useCompleteTarget() {
+  const queryClient = useQueryClient();
+  const userId = useUserId();
+
+  return useMutation({
+    mutationFn: async ({ targetId, completed }: { targetId: number; completed: boolean }) => {
+      const targets = getTargets(userId);
+      saveTargets(userId, targets.map(t => t.id === targetId ? { ...t, completed } : t));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['targets'] });
+    },
+  });
+}
+
+export function useDeleteTarget() {
+  const queryClient = useQueryClient();
+  const userId = useUserId();
+
+  return useMutation({
+    mutationFn: async (targetId: number) => {
+      const targets = getTargets(userId);
+      saveTargets(userId, targets.filter(t => t.id !== targetId));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['targets'] });
+    },
+  });
+}
+
+// ─── Revision Tasks ─────────────────────────────────────────────────────────
+
+export function useGetRevisionTasks() {
+  const userId = useUserId();
+
+  return useQuery({
+    queryKey: ['revisionTasks', userId],
+    queryFn: () => getRevisionTasks(userId),
+  });
+}
+
+export function useGetPendingRevisionTasks() {
+  const userId = useUserId();
+
+  return useQuery({
+    queryKey: ['revisionTasks', userId, 'pending'],
+    queryFn: () => {
+      const all = getRevisionTasks(userId);
+      return all.filter(r => !r.completed);
+    },
+  });
+}
+
+export function useMarkRevisionTaskCompleted() {
+  const queryClient = useQueryClient();
+  const userId = useUserId();
+
+  return useMutation({
+    mutationFn: async ({ revisionId, completed }: { revisionId: number; completed: boolean }) => {
+      const tasks = getRevisionTasks(userId);
+      saveRevisionTasks(userId, tasks.map(r => r.id === revisionId ? { ...r, completed } : r));
+      if (completed) updateStreak(userId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['revisionTasks'] });
+      queryClient.invalidateQueries({ queryKey: ['streak'] });
     },
   });
 }
@@ -889,26 +740,21 @@ export function useDeleteFlashcard() {
 // ─── Study Streak ────────────────────────────────────────────────────────────
 
 export function useGetStudyStreak() {
-  const { actor, isFetching } = useActor();
+  const userId = useUserId();
 
-  return useQuery<StudyStreak>({
-    queryKey: ['streak'],
-    queryFn: async () => {
-      if (!actor) return { currentStreak: BigInt(0), lastActiveDate: BigInt(0), topStreak: BigInt(0) };
-      return actor.getStudyStreak();
-    },
-    enabled: !!actor && !isFetching,
+  return useQuery({
+    queryKey: ['streak', userId],
+    queryFn: () => getStudyStreak(userId),
   });
 }
 
 export function useRecordDailyLogin() {
-  const { actor } = useActor();
   const queryClient = useQueryClient();
+  const userId = useUserId();
 
   return useMutation({
     mutationFn: async () => {
-      if (!actor) throw new Error('Actor not available');
-      return actor.recordDailyLogin();
+      return updateStreak(userId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['streak'] });
@@ -919,63 +765,107 @@ export function useRecordDailyLogin() {
 // ─── Achievements ────────────────────────────────────────────────────────────
 
 export function useGetAchievements() {
-  const { actor, isFetching } = useActor();
+  const userId = useUserId();
 
-  return useQuery<UserAchievement[]>({
-    queryKey: ['achievements'],
-    queryFn: async () => {
-      if (!actor) return [];
-      return actor.getAchievements();
-    },
-    enabled: !!actor && !isFetching,
+  return useQuery({
+    queryKey: ['achievements', userId],
+    queryFn: () => getAchievements(userId),
   });
 }
 
-// ─── Progress ────────────────────────────────────────────────────────────────
+// ─── Progress Summary ────────────────────────────────────────────────────────
 
 export function useGetProgressSummary() {
-  const { actor, isFetching } = useActor();
+  const userId = useUserId();
 
-  return useQuery<ProgressSummary>({
-    queryKey: ['progress'],
-    queryFn: async () => {
-      if (!actor) {
+  return useQuery({
+    queryKey: ['progress', userId],
+    queryFn: () => {
+      initializeUserData(userId);
+      const subjects = getSubjects(userId);
+      const chapters = getChapters(userId);
+      const tasks = getPlannerTasks(userId);
+      const targets = getTargets(userId);
+      const attempts = getTestAttempts(userId);
+
+      const subjectProgress = subjects.map(s => {
+        const subChapters = chapters.filter(c => c.subjectId === s.id);
+        const completedCount = subChapters.filter(c => c.completed).length;
         return {
-          subjectProgress: [],
-          totalTasksCompleted: BigInt(0),
-          totalTasks: BigInt(0),
-          totalTargetsAchieved: BigInt(0),
-          totalTargets: BigInt(0),
-          mockTestAverageScore: BigInt(0),
-          totalMockTestsAttempted: BigInt(0),
+          subjectId: s.id,
+          subjectName: s.name,
+          totalChapters: subChapters.length,
+          completedChapters: completedCount,
         };
-      }
-      return actor.getProgressSummary();
+      });
+
+      const completedTasks = tasks.filter(t => t.completed).length;
+      const achievedTargets = targets.filter(t => t.completed).length;
+      const totalScore = attempts.reduce((acc, a) => acc + a.report.percentage, 0);
+      const avgScore = attempts.length === 0 ? 0 : Math.round(totalScore / attempts.length);
+
+      return {
+        subjectProgress,
+        totalTasksCompleted: completedTasks,
+        totalTasks: tasks.length,
+        totalTargetsAchieved: achievedTargets,
+        totalTargets: targets.length,
+        mockTestAverageScore: avgScore,
+        totalMockTestsAttempted: attempts.length,
+      };
     },
-    enabled: !!actor && !isFetching,
   });
 }
 
 // ─── Personal Best ───────────────────────────────────────────────────────────
 
 export function useGetPersonalBest() {
-  const { actor, isFetching } = useActor();
+  const userId = useUserId();
 
-  return useQuery<PersonalBest>({
-    queryKey: ['personalBest'],
-    queryFn: async () => {
-      if (!actor) {
-        return {
-          highestScorePerSubject: [],
-          fastestTestTime: BigInt(0),
-          rankLabel: 'Beginner Scholar',
-          totalQuestionsPracticed: BigInt(0),
-          totalChaptersCompleted: BigInt(0),
-          longestStreak: BigInt(0),
-        };
+  return useQuery({
+    queryKey: ['personalBest', userId],
+    queryFn: () => {
+      const attempts = getTestAttempts(userId);
+      const chapters = getChapters(userId);
+      const questions = getQuestions(userId);
+      const streak = getStudyStreak(userId);
+      const subjects = getSubjects(userId);
+
+      const highestScorePerSubject = subjects.map(s => {
+        const subjectAttempts = attempts;
+        const maxScore = subjectAttempts.reduce((acc, a) => Math.max(acc, a.report.percentage), 0);
+        return [s.id, maxScore] as [number, number];
+      });
+
+      const fastestTime = attempts.reduce((acc, a) => {
+        if (acc === 0 || (a.report.timeTaken > 0 && a.report.timeTaken < acc)) return a.report.timeTaken;
+        return acc;
+      }, 0);
+
+      const totalChaptersCompleted = chapters.filter(c => c.completed).length;
+      const totalQuestionsPracticed = questions.length;
+      const longestStreak = streak.topStreak;
+
+      const totalScore = attempts.reduce((acc, a) => acc + a.report.percentage, 0);
+      const avgScore = attempts.length === 0 ? 0 : Math.round(totalScore / attempts.length);
+
+      let rankLabel = 'Beginner Scholar';
+      if (totalChaptersCompleted >= 20 && avgScore >= 80 && longestStreak >= 30) {
+        rankLabel = 'Board Champion';
+      } else if (totalChaptersCompleted >= 10 && avgScore >= 60 && longestStreak >= 7) {
+        rankLabel = 'Rising Star';
+      } else if (totalChaptersCompleted >= 5 && avgScore >= 40) {
+        rankLabel = 'Dedicated Learner';
       }
-      return actor.getPersonalBest();
+
+      return {
+        highestScorePerSubject,
+        fastestTestTime: fastestTime,
+        totalQuestionsPracticed,
+        totalChaptersCompleted,
+        longestStreak,
+        rankLabel,
+      };
     },
-    enabled: !!actor && !isFetching,
   });
 }

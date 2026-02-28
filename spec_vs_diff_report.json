@@ -1,25 +1,42 @@
 {
   "kind": "spec_vs_diff_report",
   "version": "1.0",
-  "generatedAt": "2026-02-28T08:02:10.955Z",
-  "summary": "The diff modifies Layout.tsx to revert sidebar styling back to a dark teal appearance using CSS tokens, which partially addresses REQ-1. However, there is insufficient evidence that all acceptance criteria are met — specifically, the 'Made by DEV' badge styling revert and widget colour (calendar widget, streak card, quote card, etc.) reverts are not visible in the diff.",
+  "generatedAt": "2026-02-28T08:52:58.799Z",
+  "summary": "The diff implements the core parent portal features including localStorage data layer functions, login page parent buttons/dialogs, parent dashboard page, notification system in Layout, and route protection in App.tsx. Most requirements appear well-covered, but there are some specific acceptance criteria gaps based on the available truncated diff evidence.",
   "missing_requirements": [
     {
-      "id": "REQ-1",
-      "requirement": "The 'Made by DEV' badge styling/colours match the pre-Version-10 state.",
-      "reason": "The diff does not show any changes to the MadeByDevBadge component or its styling. The file summary for Dashboard.tsx and LoginPage.tsx mention MadeByDevBadge but no diff content showing badge colour/style revert is present.",
+      "requirement": "Notes section on parent dashboard should show uploaded notes count per subject/chapter with the ability to see note titles",
+      "reason": "The diff is truncated for ParentDashboard.tsx and the expandedSections state includes 'notes: false', but there is no visible evidence that note titles are displayed or that a notes count per subject/chapter section is fully implemented with title visibility.",
       "evidence": [
-        "frontend/src/pages/Dashboard.tsx",
-        "frontend/src/pages/LoginPage.tsx"
+        "frontend/src/pages/ParentDashboard.tsx"
       ]
     },
     {
-      "id": "REQ-1",
-      "requirement": "All widget colours (calendar widget, streak card, quote card, etc.) are restored to their pre-Version-10 appearance.",
-      "reason": "The diff only shows Layout.tsx being modified. There are no changes shown for CalendarWidget, streak card, quote card, or other dashboard widget components that may have had colour overrides introduced in Version 10.",
+      "requirement": "Flashcards section should show per-card flip/review count",
+      "reason": "The diff is truncated for ParentDashboard.tsx; expandedSections includes 'flashcards: false' but the rendering logic for per-card flip/review counts is not visible in the truncated output.",
       "evidence": [
-        "frontend/src/components/CalendarWidget.tsx",
-        "frontend/src/pages/Dashboard.tsx"
+        "frontend/src/pages/ParentDashboard.tsx"
+      ]
+    },
+    {
+      "requirement": "Question Bank section should show all questions grouped by subject/chapter with filtering",
+      "reason": "expandedSections includes 'questionBank: false' but the rendering logic is truncated; cannot confirm full implementation of subject/chapter filtering.",
+      "evidence": [
+        "frontend/src/pages/ParentDashboard.tsx"
+      ]
+    },
+    {
+      "requirement": "Send button on comment box should be disabled when textarea is empty",
+      "reason": "The handleSendComment function checks if commentText is empty but the button disabled attribute rendering is in the truncated portion of ParentDashboard.tsx and cannot be confirmed.",
+      "evidence": [
+        "frontend/src/pages/ParentDashboard.tsx"
+      ]
+    },
+    {
+      "requirement": "getLinkedChildData() should return planner tasks as part of the child data",
+      "reason": "The localStorageService.ts is truncated; the LinkedChildData interface and getLinkedChildData function contents are not visible to confirm planner tasks are included.",
+      "evidence": [
+        "frontend/src/utils/localStorageService.ts"
       ]
     }
   ],
@@ -27,7 +44,11 @@
   "confidence": 0.62,
   "changed_files": [
     "frontend-file-summaries.txt",
+    "frontend/src/App.tsx",
     "frontend/src/components/Layout.tsx",
+    "frontend/src/pages/LoginPage.tsx",
+    "frontend/src/pages/ParentDashboard.tsx",
+    "frontend/src/utils/localStorageService.ts",
     "project_state.json"
   ]
 }

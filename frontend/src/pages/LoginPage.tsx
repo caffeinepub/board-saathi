@@ -1,317 +1,680 @@
 import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { Eye, EyeOff, User, Lock, Mail, School, BookOpen, Loader2 } from 'lucide-react';
-import { useRegister, useGetCallerUserProfile, storeUser } from '../hooks/useQueries';
-import { useInternetIdentity } from '../hooks/useInternetIdentity';
-import { useQueryClient } from '@tanstack/react-query';
-import MadeByDevBadge from '../components/MadeByDevBadge';
+import { toast } from 'sonner';
+import { Eye, EyeOff, User, Lock, School, GraduationCap, UserPlus, LogIn, X, Users, ShieldCheck } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import {
+  validateCredentials,
+  saveUserAccount,
+  isUsernameAvailable,
+  generateUserId,
+  simpleHash,
+  setCurrentUserId,
+  findAccountsBySchool,
+  updateUserPassword,
+  initializeUserData,
+  StoredUserAccount,
+  createParentAccount,
+  parentLogin,
+  setParentSession,
+} from '../utils/localStorageService';
 
-// suppress unused import warnings
-void Eye; void EyeOff;
-
-type AuthMode = 'login' | 'register' | 'forgot';
+type Mode = 'login' | 'register';
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const { login, loginStatus, identity, clear } = useInternetIdentity();
-  const { data: userProfile, isLoading: profileLoading, isFetched: profileFetched } = useGetCallerUserProfile();
-  const registerMutation = useRegister();
+  const [mode, setMode] = useState<Mode>('login');
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const [mode, setMode] = useState<AuthMode>('login');
-  const [formData, setFormData] = useState({
-    username: '',
-    name: '',
-    school: '',
-    studentClass: '10',
-  });
-  const [error, setError] = useState('');
+  // Login form
+  const [loginUsername, setLoginUsername] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
 
-  const isLoggingIn = loginStatus === 'logging-in';
-  const isAuthenticated = !!identity;
+  // Register form
+  const [regUsername, setRegUsername] = useState('');
+  const [regPassword, setRegPassword] = useState('');
+  const [regName, setRegName] = useState('');
+  const [regSchool, setRegSchool] = useState('');
+  const [regClass, setRegClass] = useState('10');
 
-  // If authenticated and profile loaded, redirect
-  if (isAuthenticated && profileFetched && !profileLoading) {
-    if (userProfile) {
-      storeUser({ name: userProfile.name, username: userProfile.username });
-      navigate({ to: '/dashboard' });
+  // Forgot password
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotSchool, setForgotSchool] = useState('');
+  const [forgotResults, setForgotResults] = useState<StoredUserAccount[]>([]);
+  const [forgotSearched, setForgotSearched] = useState(false);
+  const [resetUsername, setResetUsername] = useState('');
+  const [resetNewPassword, setResetNewPassword] = useState('');
+  const [resetDone, setResetDone] = useState(false);
+
+  // Parent login dialog
+  const [parentLoginOpen, setParentLoginOpen] = useState(false);
+  const [parentLoginUsername, setParentLoginUsername] = useState('');
+  const [parentLoginPassword, setParentLoginPassword] = useState('');
+  const [showParentLoginPassword, setShowParentLoginPassword] = useState(false);
+  const [parentLoginLoading, setParentLoginLoading] = useState(false);
+
+  // Parent register dialog
+  const [parentRegisterOpen, setParentRegisterOpen] = useState(false);
+  const [parentRegUsername, setParentRegUsername] = useState('');
+  const [parentRegChildUsername, setParentRegChildUsername] = useState('');
+  const [parentRegChildPassword, setParentRegChildPassword] = useState('');
+  const [showParentRegPassword, setShowParentRegPassword] = useState(false);
+  const [parentRegLoading, setParentRegLoading] = useState(false);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!loginUsername.trim() || !loginPassword.trim()) {
+      toast.error('Please enter username and password');
+      return;
     }
-  }
-
-  const handleLogin = async () => {
-    setError('');
+    setLoading(true);
     try {
-      await login();
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Login failed';
-      if (message === 'User is already authenticated') {
-        await clear();
-        setTimeout(() => login(), 300);
-      } else {
-        setError(message);
+      const account = validateCredentials(loginUsername.trim(), loginPassword);
+      if (!account) {
+        toast.error('Invalid username or password');
+        return;
       }
+      setCurrentUserId(account.userId);
+      initializeUserData(account.userId);
+      toast.success(`Welcome back, ${account.name}!`);
+      navigate({ to: '/' });
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleRegister = async () => {
-    setError('');
-    if (!formData.username || !formData.name || !formData.school) {
-      setError('Please fill in all required fields.');
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!regUsername.trim() || !regPassword.trim() || !regName.trim() || !regSchool.trim()) {
+      toast.error('Please fill in all required fields');
       return;
     }
-    if (!isAuthenticated) {
-      setError('Please login with Internet Identity first.');
+    if (regPassword.length < 4) {
+      toast.error('Password must be at least 4 characters');
       return;
     }
+    if (!isUsernameAvailable(regUsername.trim())) {
+      toast.error('Username already taken. Please choose another.');
+      return;
+    }
+    setLoading(true);
     try {
-      await registerMutation.mutateAsync({
-        username: formData.username,
-        name: formData.name,
-        school: formData.school,
-        studentClass: BigInt(formData.studentClass),
-      });
-      storeUser({ name: formData.name, username: formData.username });
-      queryClient.invalidateQueries({ queryKey: ['currentUserProfile'] });
-      navigate({ to: '/dashboard' });
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Registration failed');
+      const userId = generateUserId();
+      const account: StoredUserAccount = {
+        userId,
+        username: regUsername.trim(),
+        passwordHash: simpleHash(regPassword),
+        name: regName.trim(),
+        school: regSchool.trim(),
+        studentClass: parseInt(regClass, 10) || 10,
+        createdAt: Date.now(),
+      };
+      saveUserAccount(account);
+      setCurrentUserId(userId);
+      initializeUserData(userId);
+      toast.success(`Account created! Welcome, ${regName}!`);
+      navigate({ to: '/' });
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleGuestMode = () => {
-    storeUser({ name: 'Guest Student', username: 'guest' });
-    navigate({ to: '/dashboard' });
+    setCurrentUserId('guest');
+    initializeUserData('guest');
+    toast.success('Continuing as Guest. Your data will be cleared when you close the browser.');
+    navigate({ to: '/' });
+  };
+
+  const handleForgotSearch = () => {
+    if (!forgotSchool.trim()) {
+      toast.error('Please enter your school name');
+      return;
+    }
+    const results = findAccountsBySchool(forgotSchool.trim());
+    setForgotResults(results);
+    setForgotSearched(true);
+  };
+
+  const handlePasswordReset = () => {
+    if (!resetUsername || !resetNewPassword.trim()) {
+      toast.error('Please select an account and enter a new password');
+      return;
+    }
+    if (resetNewPassword.length < 4) {
+      toast.error('Password must be at least 4 characters');
+      return;
+    }
+    const success = updateUserPassword(resetUsername, resetNewPassword);
+    if (success) {
+      setResetDone(true);
+      toast.success('Password reset successfully!');
+    } else {
+      toast.error('Failed to reset password');
+    }
+  };
+
+  const handleParentLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!parentLoginUsername.trim() || !parentLoginPassword.trim()) {
+      toast.error('Please enter your username and your child\'s password');
+      return;
+    }
+    setParentLoginLoading(true);
+    try {
+      const session = parentLogin(parentLoginUsername.trim(), parentLoginPassword);
+      setParentSession(session);
+      toast.success(`Welcome! Viewing ${session.childUsername}'s progress.`);
+      setParentLoginOpen(false);
+      navigate({ to: '/parent-dashboard' });
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Login failed');
+    } finally {
+      setParentLoginLoading(false);
+    }
+  };
+
+  const handleParentRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!parentRegUsername.trim() || !parentRegChildUsername.trim() || !parentRegChildPassword.trim()) {
+      toast.error('Please fill in all fields');
+      return;
+    }
+    setParentRegLoading(true);
+    try {
+      createParentAccount(
+        parentRegUsername.trim(),
+        parentRegChildUsername.trim(),
+        parentRegChildPassword
+      );
+      toast.success('Parent account created! You can now log in.');
+      setParentRegisterOpen(false);
+      // Pre-fill parent login
+      setParentLoginUsername(parentRegUsername.trim());
+      setParentLoginOpen(true);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create account');
+    } finally {
+      setParentRegLoading(false);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-teal-50 via-white to-cyan-50 flex flex-col items-center justify-center p-4 relative">
-      {/* Background decoration */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-20 -right-20 w-64 h-64 bg-teal-100 rounded-full opacity-30 blur-3xl" />
-        <div className="absolute -bottom-20 -left-20 w-64 h-64 bg-cyan-100 rounded-full opacity-30 blur-3xl" />
-      </div>
-
-      <div className="w-full max-w-md relative z-10">
-        {/* Logo & Title */}
+    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 flex items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center mb-4">
+          <div className="flex justify-center mb-4">
             <img
               src="/assets/generated/board-saathi-logo.dim_256x256.png"
               alt="Board Saathi"
-              className="w-20 h-20 rounded-2xl shadow-lg object-cover"
+              className="w-20 h-20 rounded-2xl shadow-lg object-contain"
               onError={(e) => {
-                (e.target as HTMLImageElement).src = '/assets/generated/board-saathi-icon.dim_512x512.png';
+                const target = e.currentTarget;
+                target.src = '/assets/generated/app-icon-192.dim_192x192.png';
               }}
             />
           </div>
-          <h1 className="text-3xl font-bold text-gray-900">Board Saathi</h1>
-          <p className="text-gray-500 text-sm mt-1">Your CBSE Class 10 Study Companion</p>
+          <h1 className="text-3xl font-bold text-foreground">Board Saathi</h1>
+          <p className="text-muted-foreground mt-1">Your CBSE Class 10 Companion</p>
         </div>
 
-        {/* Card */}
-        <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-6">
-          {/* Tabs */}
-          <div className="flex gap-1 bg-gray-100 rounded-xl p-1 mb-6">
-            {(['login', 'register'] as AuthMode[]).map((m) => (
-              <button
-                key={m}
-                onClick={() => { setMode(m); setError(''); }}
-                className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all capitalize ${
-                  mode === m
-                    ? 'bg-white text-teal-700 shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {m === 'login' ? 'Sign In' : 'Register'}
-              </button>
-            ))}
-          </div>
-
-          {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
-              {error}
-            </div>
-          )}
-
-          {mode === 'login' && (
-            <div className="space-y-4">
-              <div className="text-center py-4">
-                <div className="w-14 h-14 bg-teal-50 rounded-2xl flex items-center justify-center mx-auto mb-3">
-                  <User size={28} className="text-teal-600" />
-                </div>
-                <p className="text-sm text-gray-600 mb-1">Sign in securely with</p>
-                <p className="text-base font-semibold text-gray-800">Internet Identity</p>
-                <p className="text-xs text-gray-400 mt-1">No password needed — secure & private</p>
-              </div>
-              <button
-                onClick={handleLogin}
-                disabled={isLoggingIn}
-                className="w-full py-3 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
-              >
-                {isLoggingIn ? (
-                  <>
-                    <Loader2 size={18} className="animate-spin" />
-                    Signing in...
-                  </>
-                ) : (
-                  <>
-                    <Lock size={18} />
-                    Sign In with Internet Identity
-                  </>
-                )}
-              </button>
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-200" />
-                </div>
-                <div className="relative flex justify-center text-xs text-gray-400 bg-white px-2">or</div>
-              </div>
-              <button
-                onClick={handleGuestMode}
-                className="w-full py-3 border border-gray-200 text-gray-600 font-medium rounded-xl hover:bg-gray-50 transition-colors text-sm"
-              >
-                Continue as Guest
-              </button>
-              <button
-                onClick={() => setMode('forgot')}
-                className="w-full text-xs text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                Forgot your identity? Get help →
-              </button>
-            </div>
-          )}
-
-          {mode === 'register' && (
-            <div className="space-y-4">
-              {!isAuthenticated && (
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
-                  <strong>Step 1:</strong> First sign in with Internet Identity, then complete your profile below.
-                </div>
-              )}
-              {!isAuthenticated && (
-                <button
-                  onClick={handleLogin}
-                  disabled={isLoggingIn}
-                  className="w-full py-2.5 bg-teal-600 hover:bg-teal-700 text-white font-medium rounded-xl transition-colors flex items-center justify-center gap-2 text-sm disabled:opacity-60"
-                >
-                  {isLoggingIn ? <Loader2 size={16} className="animate-spin" /> : <Lock size={16} />}
-                  {isLoggingIn ? 'Connecting...' : 'Connect Internet Identity'}
-                </button>
-              )}
-              {isAuthenticated && (
-                <div className="p-2 bg-green-50 border border-green-200 rounded-lg text-xs text-green-700 flex items-center gap-2">
-                  <span className="w-2 h-2 bg-green-500 rounded-full" />
-                  Identity connected! Complete your profile below.
-                </div>
-              )}
-              <div className="space-y-3">
-                <div className="relative">
-                  <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Full Name *"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-300"
-                  />
-                </div>
-                <div className="relative">
-                  <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Username *"
-                    value={formData.username}
-                    onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                    className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-300"
-                  />
-                </div>
-                <div className="relative">
-                  <School size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="School Name *"
-                    value={formData.school}
-                    onChange={(e) => setFormData({ ...formData, school: e.target.value })}
-                    className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-300"
-                  />
-                </div>
-                <div className="relative">
-                  <BookOpen size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <select
-                    value={formData.studentClass}
-                    onChange={(e) => setFormData({ ...formData, studentClass: e.target.value })}
-                    className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-300 bg-white"
-                  >
-                    <option value="10">Class 10</option>
-                    <option value="9">Class 9</option>
-                  </select>
-                </div>
-              </div>
-              <button
-                onClick={handleRegister}
-                disabled={registerMutation.isPending || !isAuthenticated}
-                className="w-full py-3 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
-              >
-                {registerMutation.isPending ? (
-                  <>
-                    <Loader2 size={18} className="animate-spin" />
-                    Creating account...
-                  </>
-                ) : (
-                  'Create Account'
-                )}
-              </button>
-            </div>
-          )}
-
-          {mode === 'forgot' && (
-            <div className="space-y-4 text-center">
-              <div className="w-14 h-14 bg-amber-50 rounded-2xl flex items-center justify-center mx-auto">
-                <Lock size={28} className="text-amber-500" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-800 mb-2">Recover Internet Identity</h3>
-                <p className="text-sm text-gray-500">
-                  Internet Identity uses your device's biometrics or security key. If you've lost access, visit{' '}
-                  <a
-                    href="https://identity.ic0.app"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-teal-600 underline"
-                  >
-                    identity.ic0.app
-                  </a>{' '}
-                  to recover your identity.
-                </p>
-              </div>
+        <Card className="shadow-xl border-border/50">
+          <CardHeader className="pb-2">
+            {/* Mode tabs */}
+            <div className="flex rounded-lg bg-muted p-1 gap-1">
               <button
                 onClick={() => setMode('login')}
-                className="text-sm text-teal-600 hover:text-teal-800 font-medium"
+                className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all ${
+                  mode === 'login'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
               >
-                ← Back to Sign In
+                Login
+              </button>
+              <button
+                onClick={() => setMode('register')}
+                className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all ${
+                  mode === 'register'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Register
               </button>
             </div>
-          )}
-        </div>
+          </CardHeader>
 
-        {/* Made by DEV badge */}
-        <div className="flex justify-center mt-6">
-          <MadeByDevBadge />
-        </div>
+          <CardContent className="pt-4">
+            {mode === 'login' ? (
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="username">Username</Label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      id="username"
+                      placeholder="Enter your username"
+                      value={loginUsername}
+                      onChange={e => setLoginUsername(e.target.value)}
+                      className="pl-9"
+                      autoComplete="username"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      id="password"
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="Enter your password"
+                      value={loginPassword}
+                      onChange={e => setLoginPassword(e.target.value)}
+                      className="pl-9 pr-10"
+                      autoComplete="current-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading ? (
+                    <span className="flex items-center gap-2"><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Logging in...</span>
+                  ) : (
+                    <span className="flex items-center gap-2"><LogIn className="w-4 h-4" />Login</span>
+                  )}
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => setForgotOpen(true)}
+                  className="w-full text-sm text-primary hover:underline text-center"
+                >
+                  Forgot password?
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleRegister} className="space-y-3">
+                <div className="space-y-2">
+                  <Label htmlFor="reg-name">Full Name</Label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      id="reg-name"
+                      placeholder="Your full name"
+                      value={regName}
+                      onChange={e => setRegName(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="reg-username">Username</Label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      id="reg-username"
+                      placeholder="Choose a username"
+                      value={regUsername}
+                      onChange={e => setRegUsername(e.target.value)}
+                      className="pl-9"
+                      autoComplete="username"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="reg-password">Password</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      id="reg-password"
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="Min. 4 characters"
+                      value={regPassword}
+                      onChange={e => setRegPassword(e.target.value)}
+                      className="pl-9 pr-10"
+                      autoComplete="new-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="reg-school">School Name</Label>
+                  <div className="relative">
+                    <School className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      id="reg-school"
+                      placeholder="Your school name"
+                      value={regSchool}
+                      onChange={e => setRegSchool(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="reg-class">Class</Label>
+                  <div className="relative">
+                    <GraduationCap className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      id="reg-class"
+                      type="number"
+                      min="1"
+                      max="12"
+                      placeholder="10"
+                      value={regClass}
+                      onChange={e => setRegClass(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+                </div>
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading ? (
+                    <span className="flex items-center gap-2"><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Creating...</span>
+                  ) : (
+                    <span className="flex items-center gap-2"><UserPlus className="w-4 h-4" />Create Account</span>
+                  )}
+                </Button>
+              </form>
+            )}
 
-        {/* Footer */}
-        <p className="text-center text-xs text-gray-400 mt-4">
+            {/* Divider */}
+            <div className="relative my-4">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-border" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-card px-2 text-muted-foreground">or</span>
+              </div>
+            </div>
+
+            {/* Guest mode */}
+            <Button variant="outline" className="w-full mb-3" onClick={handleGuestMode}>
+              Continue as Guest
+            </Button>
+
+            {/* Parent Portal Divider */}
+            <div className="relative my-4">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-border" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-card px-2 text-muted-foreground">Parent Portal</span>
+              </div>
+            </div>
+
+            {/* Parent buttons */}
+            <div className="space-y-2">
+              <Button
+                variant="outline"
+                className="w-full justify-start gap-2 border-amber-500/40 text-amber-700 hover:bg-amber-50 hover:border-amber-500"
+                onClick={() => setParentLoginOpen(true)}
+              >
+                <Users className="w-4 h-4" />
+                Login as Parent
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full justify-start gap-2 border-emerald-500/40 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-500"
+                onClick={() => setParentRegisterOpen(true)}
+              >
+                <ShieldCheck className="w-4 h-4" />
+                Create Parent Account
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <p className="text-center text-xs text-muted-foreground mt-6">
           Built with ❤️ using{' '}
           <a
-            href={`https://caffeine.ai/?utm_source=Caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname || 'board-saathi')}`}
+            href={`https://caffeine.ai/?utm_source=Caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname)}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-teal-500 hover:underline"
+            className="text-primary hover:underline"
           >
             caffeine.ai
           </a>
         </p>
       </div>
+
+      {/* Forgot Password Dialog */}
+      <Dialog open={forgotOpen} onOpenChange={open => { setForgotOpen(open); if (!open) { setForgotSchool(''); setForgotResults([]); setForgotSearched(false); setResetUsername(''); setResetNewPassword(''); setResetDone(false); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Forgot Password</DialogTitle>
+            <DialogDescription>Find your account by school name and reset your password.</DialogDescription>
+          </DialogHeader>
+          {!resetDone ? (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>School Name</Label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Enter your school name"
+                    value={forgotSchool}
+                    onChange={e => setForgotSchool(e.target.value)}
+                  />
+                  <Button type="button" onClick={handleForgotSearch} size="sm">Search</Button>
+                </div>
+              </div>
+              {forgotSearched && (
+                <div className="space-y-2">
+                  {forgotResults.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No accounts found for this school.</p>
+                  ) : (
+                    <>
+                      <Label>Select your account</Label>
+                      <div className="space-y-1 max-h-40 overflow-y-auto">
+                        {forgotResults.map(acc => (
+                          <button
+                            key={acc.username}
+                            onClick={() => setResetUsername(acc.username)}
+                            className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all ${
+                              resetUsername === acc.username
+                                ? 'bg-primary text-primary-foreground'
+                                : 'bg-muted hover:bg-muted/80'
+                            }`}
+                          >
+                            <span className="font-medium">{acc.name}</span>
+                            <span className="text-xs ml-2 opacity-70">@{acc.username}</span>
+                          </button>
+                        ))}
+                      </div>
+                      {resetUsername && (
+                        <div className="space-y-2 pt-2">
+                          <Label>New Password</Label>
+                          <Input
+                            type="password"
+                            placeholder="Enter new password (min. 4 chars)"
+                            value={resetNewPassword}
+                            onChange={e => setResetNewPassword(e.target.value)}
+                          />
+                          <Button onClick={handlePasswordReset} className="w-full">Reset Password</Button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-4">
+              <div className="text-4xl mb-3">✅</div>
+              <p className="font-medium">Password reset successfully!</p>
+              <p className="text-sm text-muted-foreground mt-1">You can now login with your new password.</p>
+              <Button className="mt-4 w-full" onClick={() => setForgotOpen(false)}>Close</Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Parent Login Dialog */}
+      <Dialog open={parentLoginOpen} onOpenChange={open => { setParentLoginOpen(open); if (!open) { setParentLoginUsername(''); setParentLoginPassword(''); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="w-5 h-5 text-amber-600" />
+              Parent Login
+            </DialogTitle>
+            <DialogDescription>
+              Enter your parent username and your child's password to access the parent portal.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleParentLogin} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="parent-login-username">Parent Username</Label>
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  id="parent-login-username"
+                  placeholder="Your parent username"
+                  value={parentLoginUsername}
+                  onChange={e => setParentLoginUsername(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="parent-login-password">Child's Password</Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  id="parent-login-password"
+                  type={showParentLoginPassword ? 'text' : 'password'}
+                  placeholder="Your child's account password"
+                  value={parentLoginPassword}
+                  onChange={e => setParentLoginPassword(e.target.value)}
+                  className="pl-9 pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowParentLoginPassword(!showParentLoginPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showParentLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+            <Button type="submit" className="w-full bg-amber-600 hover:bg-amber-700 text-white" disabled={parentLoginLoading}>
+              {parentLoginLoading ? (
+                <span className="flex items-center gap-2"><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Logging in...</span>
+              ) : (
+                <span className="flex items-center gap-2"><LogIn className="w-4 h-4" />Login as Parent</span>
+              )}
+            </Button>
+            <p className="text-xs text-center text-muted-foreground">
+              Don't have a parent account?{' '}
+              <button
+                type="button"
+                className="text-primary hover:underline"
+                onClick={() => { setParentLoginOpen(false); setParentRegisterOpen(true); }}
+              >
+                Create one
+              </button>
+            </p>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Parent Register Dialog */}
+      <Dialog open={parentRegisterOpen} onOpenChange={open => { setParentRegisterOpen(open); if (!open) { setParentRegUsername(''); setParentRegChildUsername(''); setParentRegChildPassword(''); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-emerald-600" />
+              Create Parent Account
+            </DialogTitle>
+            <DialogDescription>
+              Link your account to your child's Board Saathi account using their username and password.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleParentRegister} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="parent-reg-username">Your Parent Username</Label>
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  id="parent-reg-username"
+                  placeholder="Choose a username for yourself"
+                  value={parentRegUsername}
+                  onChange={e => setParentRegUsername(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="parent-reg-child-username">Child's Username</Label>
+              <div className="relative">
+                <GraduationCap className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  id="parent-reg-child-username"
+                  placeholder="Your child's Board Saathi username"
+                  value={parentRegChildUsername}
+                  onChange={e => setParentRegChildUsername(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="parent-reg-child-password">Child's Password</Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  id="parent-reg-child-password"
+                  type={showParentRegPassword ? 'text' : 'password'}
+                  placeholder="Your child's account password"
+                  value={parentRegChildPassword}
+                  onChange={e => setParentRegChildPassword(e.target.value)}
+                  className="pl-9 pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowParentRegPassword(!showParentRegPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showParentRegPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground">Ask your child for their Board Saathi password.</p>
+            </div>
+            <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white" disabled={parentRegLoading}>
+              {parentRegLoading ? (
+                <span className="flex items-center gap-2"><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Creating...</span>
+              ) : (
+                <span className="flex items-center gap-2"><ShieldCheck className="w-4 h-4" />Create Parent Account</span>
+              )}
+            </Button>
+            <p className="text-xs text-center text-muted-foreground">
+              Already have a parent account?{' '}
+              <button
+                type="button"
+                className="text-primary hover:underline"
+                onClick={() => { setParentRegisterOpen(false); setParentLoginOpen(true); }}
+              >
+                Login here
+              </button>
+            </p>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

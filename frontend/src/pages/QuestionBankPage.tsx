@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { HelpCircle, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useGetSubjects, useGetAllChapters, useGetQuestionBank } from '../hooks/useQueries';
-import type { Question } from '../backend';
+import { Badge } from '@/components/ui/badge';
+import { useGetSubjects, useGetAllChapters, useGetQuestionBank, LocalQuestion } from '../hooks/useQueries';
 
-function QuestionCard({ question }: { question: Question }) {
+function QuestionCard({ question }: { question: LocalQuestion }) {
   const [showAnswer, setShowAnswer] = useState(false);
 
   return (
@@ -30,22 +30,22 @@ function QuestionCard({ question }: { question: Question }) {
 }
 
 export default function QuestionBankPage() {
-  const [selectedSubjectId, setSelectedSubjectId] = useState<bigint | undefined>(undefined);
-  const [selectedChapterId, setSelectedChapterId] = useState<bigint | undefined>(undefined);
+  const [selectedSubjectId, setSelectedSubjectId] = useState<number | undefined>(undefined);
+  const [selectedChapterId, setSelectedChapterId] = useState<number | undefined>(undefined);
 
   const { data: subjects = [] } = useGetSubjects();
   const { data: allChapters = [] } = useGetAllChapters();
   const { data: questions = [], isLoading } = useGetQuestionBank(selectedSubjectId, selectedChapterId);
 
   const chaptersForSubject = selectedSubjectId
-    ? allChapters.filter((c) => c.subjectId === selectedSubjectId)
+    ? allChapters.filter(c => c.subjectId === selectedSubjectId)
     : [];
 
   const handleSubjectChange = (val: string) => {
     if (val === 'all') {
       setSelectedSubjectId(undefined);
     } else {
-      setSelectedSubjectId(BigInt(val));
+      setSelectedSubjectId(parseInt(val, 10));
     }
     setSelectedChapterId(undefined);
   };
@@ -54,7 +54,7 @@ export default function QuestionBankPage() {
     if (val === 'all') {
       setSelectedChapterId(undefined);
     } else {
-      setSelectedChapterId(BigInt(val));
+      setSelectedChapterId(parseInt(val, 10));
     }
   };
 
@@ -62,15 +62,13 @@ export default function QuestionBankPage() {
     <div className="p-4 md:p-6 max-w-3xl mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl font-bold">Question Bank</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          {questions.length} question{questions.length !== 1 ? 's' : ''}
-        </p>
+        <p className="text-muted-foreground text-sm mt-1">{questions.length} question{questions.length !== 1 ? 's' : ''}</p>
       </div>
 
       {/* Filters */}
       <div className="flex gap-3 mb-6 flex-wrap">
         <Select
-          value={selectedSubjectId !== undefined ? String(selectedSubjectId) : 'all'}
+          value={selectedSubjectId?.toString() ?? 'all'}
           onValueChange={handleSubjectChange}
         >
           <SelectTrigger className="w-48">
@@ -78,16 +76,14 @@ export default function QuestionBankPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Subjects</SelectItem>
-            {subjects.map((s) => (
-              <SelectItem key={String(s.id)} value={String(s.id)}>
-                {s.name}
-              </SelectItem>
+            {subjects.map(s => (
+              <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
             ))}
           </SelectContent>
         </Select>
 
         <Select
-          value={selectedChapterId !== undefined ? String(selectedChapterId) : 'all'}
+          value={selectedChapterId?.toString() ?? 'all'}
           onValueChange={handleChapterChange}
           disabled={!selectedSubjectId}
         >
@@ -96,10 +92,8 @@ export default function QuestionBankPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Chapters</SelectItem>
-            {chaptersForSubject.map((c) => (
-              <SelectItem key={String(c.id)} value={String(c.id)}>
-                {c.name}
-              </SelectItem>
+            {chaptersForSubject.map(c => (
+              <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -119,8 +113,8 @@ export default function QuestionBankPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {questions.map((q) => (
-            <QuestionCard key={String(q.id)} question={q} />
+          {questions.map(q => (
+            <QuestionCard key={q.id} question={q} />
           ))}
         </div>
       )}

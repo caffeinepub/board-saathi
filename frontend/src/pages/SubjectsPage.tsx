@@ -1,132 +1,145 @@
 import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { BookOpen, Plus, ChevronRight } from 'lucide-react';
+import { Plus, BookOpen, ChevronRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import { useGetSubjects, useAddSubject, useGetProgressSummary } from '../hooks/useQueries';
-import type { Subject } from '../backend';
+import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Card, CardContent } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
+import { toast } from 'sonner';
+import { useGetSubjects, useAddSubject, useGetAllChapters } from '../hooks/useQueries';
 
 const SUBJECT_COLORS = [
-  'bg-blue-50 text-blue-600 border-blue-100',
-  'bg-green-50 text-green-600 border-green-100',
-  'bg-purple-50 text-purple-600 border-purple-100',
-  'bg-orange-50 text-orange-600 border-orange-100',
-  'bg-pink-50 text-pink-600 border-pink-100',
-  'bg-teal-50 text-teal-600 border-teal-100',
+  'bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500',
+  'bg-pink-500', 'bg-teal-500', 'bg-red-500', 'bg-indigo-500',
+  'bg-yellow-500', 'bg-cyan-500',
 ];
+
+const SUBJECT_ICONS = ['📐', '📖', '🔬', '🌍', '🕉️', '💻', '🎨', '🏛️', '🧮', '📚'];
 
 export default function SubjectsPage() {
   const navigate = useNavigate();
-  const { data: subjects = [], isLoading } = useGetSubjects();
-  const { data: progress } = useGetProgressSummary();
-  const addSubject = useAddSubject();
+  const [addOpen, setAddOpen] = useState(false);
+  const [newSubjectName, setNewSubjectName] = useState('');
 
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState('');
+  const { data: subjects = [], isLoading: subjectsLoading } = useGetSubjects();
+  const { data: allChapters = [] } = useGetAllChapters();
+  const addSubjectMutation = useAddSubject();
 
-  const getSubjectProgress = (subjectId: bigint) => {
-    return progress?.subjectProgress.find((sp) => sp.subjectId === subjectId);
+  const handleAddSubject = async () => {
+    if (!newSubjectName.trim()) {
+      toast.error('Please enter a subject name');
+      return;
+    }
+    try {
+      await addSubjectMutation.mutateAsync(newSubjectName.trim());
+      toast.success(`Subject "${newSubjectName.trim()}" added!`);
+      setNewSubjectName('');
+      setAddOpen(false);
+    } catch (err) {
+      toast.error('Failed to add subject');
+    }
   };
 
-  const handleAdd = async () => {
-    if (!name.trim()) return;
-    await addSubject.mutateAsync(name.trim());
-    setName('');
-    setOpen(false);
+  const getSubjectProgress = (subjectId: number) => {
+    const chapters = allChapters.filter(c => c.subjectId === subjectId);
+    if (chapters.length === 0) return { total: 0, completed: 0, percent: 0 };
+    const completed = chapters.filter(c => c.completed).length;
+    return { total: chapters.length, completed, percent: Math.round((completed / chapters.length) * 100) };
   };
+
+  if (subjectsLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
-    <div className="p-4 md:p-6 max-w-3xl mx-auto">
+    <div className="p-4 md:p-6 max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Subjects</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Track your chapter progress per subject</p>
+          <h1 className="text-2xl font-bold text-foreground">Subjects</h1>
+          <p className="text-muted-foreground text-sm mt-1">{subjects.length} subject{subjects.length !== 1 ? 's' : ''} total</p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white">
-              <Plus size={14} className="mr-1" />
-              Add Subject
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-sm">
-            <DialogHeader>
-              <DialogTitle>Add Subject</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 pt-2">
-              <Input
-                placeholder="Subject name..."
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-              />
-              <Button
-                onClick={handleAdd}
-                disabled={addSubject.isPending || !name.trim()}
-                className="w-full bg-teal-600 hover:bg-teal-700 text-white"
-              >
-                {addSubject.isPending ? 'Adding...' : 'Add Subject'}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <Button onClick={() => setAddOpen(true)} className="gap-2">
+          <Plus className="w-4 h-4" />
+          Add Subject
+        </Button>
       </div>
 
-      {isLoading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-28 bg-gray-100 rounded-xl animate-pulse" />
-          ))}
-        </div>
-      ) : subjects.length === 0 ? (
+      {subjects.length === 0 ? (
         <div className="text-center py-16">
-          <div className="w-16 h-16 bg-teal-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <BookOpen size={32} className="text-teal-400" />
-          </div>
-          <h3 className="text-lg font-semibold text-gray-700 mb-2">No subjects yet</h3>
-          <p className="text-sm text-gray-400">Add your first subject to get started.</p>
+          <BookOpen className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-foreground mb-2">No subjects yet</h3>
+          <p className="text-muted-foreground mb-4">Add your first subject to get started</p>
+          <Button onClick={() => setAddOpen(true)} className="gap-2">
+            <Plus className="w-4 h-4" />Add Subject
+          </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {subjects.map((subject: Subject, idx) => {
-            const colorClass = SUBJECT_COLORS[idx % SUBJECT_COLORS.length];
-            const sp = getSubjectProgress(subject.id);
-            const total = Number(sp?.totalChapters ?? 0);
-            const completed = Number(sp?.completedChapters ?? 0);
-            const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
-
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {subjects.map((subject, index) => {
+            const progress = getSubjectProgress(subject.id);
+            const colorClass = SUBJECT_COLORS[index % SUBJECT_COLORS.length];
+            const icon = SUBJECT_ICONS[index % SUBJECT_ICONS.length];
             return (
-              <button
-                key={String(subject.id)}
-                onClick={() => navigate({ to: '/subjects/$subjectId', params: { subjectId: String(subject.id) } })}
-                className="bg-white border border-gray-200 rounded-xl p-4 text-left hover:shadow-md transition-shadow"
+              <Card
+                key={subject.id}
+                className="cursor-pointer hover:shadow-md transition-all hover:-translate-y-0.5 border-0 shadow-sm"
+                onClick={() => navigate({ to: '/subjects/$subjectId', params: { subjectId: subject.id.toString() } })}
               >
-                <div className="flex items-start justify-between mb-3">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${colorClass}`}>
-                    <BookOpen size={18} />
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className={`w-12 h-12 rounded-xl ${colorClass} flex items-center justify-center text-2xl`}>
+                      {icon}
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-muted-foreground mt-1" />
                   </div>
-                  <ChevronRight size={16} className="text-gray-300 mt-1" />
-                </div>
-                <h3 className="text-sm font-semibold text-gray-800 mb-1">{subject.name}</h3>
-                <p className="text-xs text-gray-400 mb-2">{completed}/{total} chapters</p>
-                <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-teal-400 to-teal-600 rounded-full transition-all"
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-              </button>
+                  <h3 className="font-semibold text-foreground mb-1 leading-tight">{subject.name}</h3>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    {progress.completed}/{progress.total} chapters completed
+                  </p>
+                  <Progress value={progress.percent} className="h-1.5" />
+                  <p className="text-xs text-muted-foreground mt-1">{progress.percent}% complete</p>
+                </CardContent>
+              </Card>
             );
           })}
         </div>
       )}
+
+      {/* Add Subject Dialog */}
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Add New Subject</DialogTitle>
+            <DialogDescription>Enter the name of the subject you want to add.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="subject-name">Subject Name</Label>
+              <Input
+                id="subject-name"
+                placeholder="e.g., Mathematics, Science..."
+                value={newSubjectName}
+                onChange={e => setNewSubjectName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleAddSubject()}
+                autoFocus
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setAddOpen(false); setNewSubjectName(''); }}>Cancel</Button>
+            <Button onClick={handleAddSubject} disabled={addSubjectMutation.isPending}>
+              {addSubjectMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Add Subject
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

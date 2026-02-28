@@ -1,216 +1,248 @@
+import { useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import {
+  useGetCallerUserProfile,
+  useGetProgressSummary,
+  useGetStudyStreak,
+  useRecordDailyLogin,
+  useGetPendingRevisionTasks,
+} from '../hooks/useQueries';
+import { getCurrentUserId, getUserAccountById } from '../utils/localStorageService';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
   BookOpen,
-  Target,
   Calendar,
-  BarChart2,
-  Flame,
-  Star,
-  ArrowRight,
   ClipboardList,
+  TrendingUp,
+  Target,
+  RefreshCw,
+  Trophy,
+  Layers,
+  ChevronRight,
+  Star,
+  Flame,
 } from 'lucide-react';
-import { useGetSubjects, useGetProgressSummary, useGetStudyStreak } from '../hooks/useQueries';
-import { getStoredUser } from '../hooks/useQueries';
-import ActiveTargetsSection from '../components/ActiveTargetsSection';
-import MadeByDevBadge from '../components/MadeByDevBadge';
-
-const MOTIVATIONAL_QUOTES = [
-  "Success is the sum of small efforts, repeated day in and day out.",
-  "The secret of getting ahead is getting started.",
-  "Don't watch the clock; do what it does. Keep going.",
-  "Believe you can and you're halfway there.",
-  "Education is the most powerful weapon you can use to change the world.",
-  "The harder you work for something, the greater you'll feel when you achieve it.",
-  "Push yourself, because no one else is going to do it for you.",
-  "Great things never come from comfort zones.",
-];
-
-function getDailyQuote(): string {
-  const dayOfYear = Math.floor(
-    (Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000
-  );
-  return MOTIVATIONAL_QUOTES[dayOfYear % MOTIVATIONAL_QUOTES.length];
-}
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const user = getStoredUser();
-  const { data: subjects = [] } = useGetSubjects();
-  const { data: progress } = useGetProgressSummary();
+
+  // Get current user info from localStorage
+  const userId = getCurrentUserId();
+  const account = userId && userId !== 'guest' ? getUserAccountById(userId) : null;
+  const displayName = account?.name ?? (userId === 'guest' ? 'Guest' : 'Student');
+
+  const { data: progress, isLoading: progressLoading } = useGetProgressSummary();
   const { data: streak } = useGetStudyStreak();
+  const { data: pendingRevisions } = useGetPendingRevisionTasks();
+  const recordLogin = useRecordDailyLogin();
 
-  // suppress unused warning
-  void subjects;
+  useEffect(() => {
+    recordLogin.mutate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const quote = getDailyQuote();
+  const totalChapters = progress?.subjectProgress.reduce((sum, s) => sum + s.totalChapters, 0) ?? 0;
+  const completedChapters = progress?.subjectProgress.reduce((sum, s) => sum + s.completedChapters, 0) ?? 0;
+  const overallProgress = totalChapters > 0 ? Math.round((completedChapters / totalChapters) * 100) : 0;
 
-  const completedChapters = progress?.subjectProgress.reduce(
-    (sum, sp) => sum + Number(sp.completedChapters),
-    0
-  ) ?? 0;
-  const totalChapters = progress?.subjectProgress.reduce(
-    (sum, sp) => sum + Number(sp.totalChapters),
-    0
-  ) ?? 0;
-
-  const stats = [
+  const quickStats = [
     {
       label: 'Chapters Done',
       value: `${completedChapters}/${totalChapters}`,
       icon: BookOpen,
-      color: 'text-blue-600 bg-blue-50',
+      color: 'text-blue-500',
+      bg: 'bg-blue-50 dark:bg-blue-950/30',
       path: '/subjects',
     },
     {
-      label: 'Tasks Completed',
-      value: `${Number(progress?.totalTasksCompleted ?? 0)}/${Number(progress?.totalTasks ?? 0)}`,
-      icon: Calendar,
-      color: 'text-green-600 bg-green-50',
-      path: '/planner',
-    },
-    {
-      label: 'Targets Achieved',
-      value: `${Number(progress?.totalTargetsAchieved ?? 0)}/${Number(progress?.totalTargets ?? 0)}`,
-      icon: Target,
-      color: 'text-purple-600 bg-purple-50',
-      path: '/targets',
-    },
-    {
       label: 'Mock Tests',
-      value: String(Number(progress?.totalMockTestsAttempted ?? 0)),
+      value: String(progress?.totalMockTestsAttempted ?? 0),
       icon: ClipboardList,
-      color: 'text-orange-600 bg-orange-50',
+      color: 'text-purple-500',
+      bg: 'bg-purple-50 dark:bg-purple-950/30',
       path: '/mock-tests',
+    },
+    {
+      label: 'Avg Score',
+      value: `${progress?.mockTestAverageScore ?? 0}%`,
+      icon: TrendingUp,
+      color: 'text-green-500',
+      bg: 'bg-green-50 dark:bg-green-950/30',
+      path: '/progress',
+    },
+    {
+      label: 'Pending Revisions',
+      value: String(pendingRevisions?.length ?? 0),
+      icon: RefreshCw,
+      color: 'text-orange-500',
+      bg: 'bg-orange-50 dark:bg-orange-950/30',
+      path: '/revision',
     },
   ];
 
+  const quickLinks = [
+    { label: 'Planner', icon: Calendar, path: '/planner', desc: 'Plan your daily study' },
+    { label: 'Flashcards', icon: Layers, path: '/flashcards', desc: 'Review with flashcards' },
+    { label: 'Mock Tests', icon: ClipboardList, path: '/mock-tests', desc: 'Test your knowledge' },
+    { label: 'Achievements', icon: Trophy, path: '/achievements', desc: 'View your badges' },
+    { label: 'Targets', icon: Target, path: '/targets', desc: 'Track your goals' },
+    { label: 'Revision', icon: RefreshCw, path: '/revision', desc: 'Spaced repetition' },
+  ];
+
   return (
-    <div className="p-4 md:p-6 max-w-5xl mx-auto">
-      {/* Active Targets - shown first */}
-      <ActiveTargetsSection />
-
-      {/* Greeting */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">
-          Hello, {user?.name ?? 'Student'} 👋
-        </h1>
-        <p className="text-gray-500 text-sm mt-1">
-          {new Date().toLocaleDateString('en-IN', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-          })}
-        </p>
+    <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="flex items-start justify-between">
+        <div>
+          {progressLoading ? (
+            <Skeleton className="h-8 w-48 mb-2" />
+          ) : (
+            <h1 className="text-2xl md:text-3xl font-bold text-foreground">
+              Hello, {displayName}! 👋
+            </h1>
+          )}
+          <p className="text-muted-foreground text-sm mt-1">
+            {new Date().toLocaleDateString('en-IN', {
+              weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+            })}
+          </p>
+        </div>
+        {account && (
+          <Badge variant="secondary" className="hidden sm:flex items-center gap-1">
+            <Star className="w-3 h-3" />
+            Class {account.studentClass}
+          </Badge>
+        )}
+        {userId === 'guest' && (
+          <Badge variant="outline" className="hidden sm:flex items-center gap-1 text-amber-600 border-amber-300">
+            Guest Mode
+          </Badge>
+        )}
       </div>
 
-      {/* Streak Banner */}
-      {streak && Number(streak.currentStreak) > 0 && (
-        <div className="mb-6 flex items-center gap-3 bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-xl px-4 py-3">
-          <Flame size={24} className="text-orange-500" />
-          <div>
-            <p className="text-sm font-semibold text-orange-700">
-              🔥 {Number(streak.currentStreak)}-day study streak!
-            </p>
-            <p className="text-xs text-orange-500">
-              Best: {Number(streak.topStreak)} days — keep it up!
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Stats Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-        {stats.map(({ label, value, icon: Icon, color, path }) => (
-          <button
-            key={label}
-            onClick={() => navigate({ to: path })}
-            className="bg-white border border-gray-100 rounded-xl p-4 text-left hover:shadow-md transition-shadow"
-          >
-            <div className={`w-9 h-9 rounded-lg flex items-center justify-center mb-2 ${color}`}>
-              <Icon size={18} />
+      {/* Streak + Overall Progress */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Card>
+          <CardContent className="p-5">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-xl bg-orange-100 flex items-center justify-center">
+                <Flame className="w-5 h-5 text-orange-500" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Study Streak</p>
+                <p className="text-2xl font-bold text-orange-500">{streak?.currentStreak ?? 0} days</p>
+              </div>
             </div>
-            <div className="text-xl font-bold text-gray-900">{value}</div>
-            <div className="text-xs text-gray-500 mt-0.5">{label}</div>
-          </button>
-        ))}
+            <p className="text-xs text-muted-foreground">Best: {streak?.topStreak ?? 0} days</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Overall Progress</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-end gap-2 mb-3">
+              <span className="text-3xl font-bold text-foreground">{overallProgress}%</span>
+              <span className="text-muted-foreground text-sm mb-1">complete</span>
+            </div>
+            <Progress value={overallProgress} className="h-2" />
+            <p className="text-xs text-muted-foreground mt-2">
+              {completedChapters} of {totalChapters} chapters completed
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Daily Quote */}
-      <div className="mb-6 bg-gradient-to-r from-teal-50 to-cyan-50 border border-teal-100 rounded-xl px-4 py-3">
-        <div className="flex items-start gap-2">
-          <Star size={16} className="text-teal-500 mt-0.5 flex-shrink-0" />
-          <p className="text-sm text-teal-800 italic">"{quote}"</p>
-        </div>
+      {/* Quick Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {quickStats.map((stat) => {
+          const Icon = stat.icon;
+          return (
+            <button key={stat.label} onClick={() => navigate({ to: stat.path })} className="text-left">
+              <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">
+                <CardContent className="p-4">
+                  <div className={`w-10 h-10 rounded-xl ${stat.bg} flex items-center justify-center mb-3`}>
+                    <Icon className={`w-5 h-5 ${stat.color}`} />
+                  </div>
+                  <p className="text-2xl font-bold text-foreground">{stat.value}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{stat.label}</p>
+                </CardContent>
+              </Card>
+            </button>
+          );
+        })}
       </div>
 
       {/* Subject Progress */}
       {progress && progress.subjectProgress.length > 0 && (
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-base font-semibold text-gray-800">Subject Progress</h2>
-            <button
-              onClick={() => navigate({ to: '/subjects' })}
-              className="text-xs text-teal-600 hover:text-teal-800 font-medium flex items-center gap-1"
-            >
-              View all <ArrowRight size={12} />
-            </button>
-          </div>
-          <div className="space-y-2">
-            {progress.subjectProgress.map((sp) => {
-              const pct =
-                Number(sp.totalChapters) > 0
-                  ? Math.round((Number(sp.completedChapters) / Number(sp.totalChapters)) * 100)
-                  : 0;
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base">Subject Progress</CardTitle>
+              <Button variant="ghost" size="sm" onClick={() => navigate({ to: '/subjects' })}>
+                View All <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {progress.subjectProgress.slice(0, 4).map((sp) => {
+              const pct = sp.totalChapters > 0
+                ? Math.round((sp.completedChapters / sp.totalChapters) * 100)
+                : 0;
               return (
-                <div key={String(sp.subjectId)} className="bg-white border border-gray-100 rounded-xl p-3">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-sm font-medium text-gray-700">{sp.subjectName}</span>
-                    <span className="text-xs text-gray-400">
-                      {String(sp.completedChapters)}/{String(sp.totalChapters)}
+                <div key={sp.subjectId}>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="font-medium truncate">{sp.subjectName}</span>
+                    <span className="text-muted-foreground flex-shrink-0 ml-2">
+                      {sp.completedChapters}/{sp.totalChapters}
                     </span>
                   </div>
-                  <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-teal-400 to-teal-600 rounded-full transition-all"
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
+                  <Progress value={pct} className="h-1.5" />
                 </div>
               );
             })}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Quick Links */}
-      <div className="mb-6">
-        <h2 className="text-base font-semibold text-gray-800 mb-3">Quick Actions</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[
-            { label: 'Add Task', icon: Calendar, path: '/planner', color: 'bg-green-50 text-green-700' },
-            { label: 'Mock Test', icon: ClipboardList, path: '/mock-tests', color: 'bg-orange-50 text-orange-700' },
-            { label: 'Progress', icon: BarChart2, path: '/progress', color: 'bg-purple-50 text-purple-700' },
-            { label: 'Subjects', icon: BookOpen, path: '/subjects', color: 'bg-blue-50 text-blue-700' },
-          ].map(({ label, icon: Icon, path, color }) => (
-            <button
-              key={label}
-              onClick={() => navigate({ to: path })}
-              className="flex flex-col items-center gap-2 p-4 bg-white border border-gray-100 rounded-xl hover:shadow-md transition-shadow"
-            >
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${color}`}>
-                <Icon size={20} />
-              </div>
-              <span className="text-xs font-medium text-gray-600">{label}</span>
-            </button>
-          ))}
+      <div>
+        <h2 className="text-base font-semibold mb-3">Quick Access</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          {quickLinks.map((link) => {
+            const Icon = link.icon;
+            return (
+              <button
+                key={link.path}
+                onClick={() => navigate({ to: link.path })}
+                className="flex flex-col items-center gap-2 p-4 rounded-xl bg-card border hover:shadow-md hover:border-primary/30 transition-all text-center"
+              >
+                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                  <Icon className="w-5 h-5 text-primary" />
+                </div>
+                <span className="text-xs font-medium text-foreground">{link.label}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* Made by DEV badge */}
-      <div className="flex justify-center mt-4 mb-2">
-        <MadeByDevBadge />
-      </div>
+      {/* Footer */}
+      <footer className="text-center text-xs text-muted-foreground pt-4 border-t">
+        © {new Date().getFullYear()} Board Saathi · Built with ❤️ using{' '}
+        <a
+          href={`https://caffeine.ai/?utm_source=Caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname || 'board-saathi')}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-primary hover:underline"
+        >
+          caffeine.ai
+        </a>
+      </footer>
     </div>
   );
 }

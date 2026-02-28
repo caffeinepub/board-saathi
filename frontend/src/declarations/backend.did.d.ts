@@ -84,12 +84,7 @@ export interface QuestionResult {
   'questionId' : bigint,
   'selectedOption' : bigint,
 }
-export interface Reminder {
-  'id' : bigint,
-  'text' : string,
-  'targetId' : [] | [bigint],
-  'dateTime' : Time,
-}
+export interface Reminder { 'id' : bigint, 'text' : string, 'dateTime' : Time }
 export interface RevisionTask {
   'id' : bigint,
   'plannerTaskId' : [] | [bigint],
@@ -173,7 +168,7 @@ export interface _SERVICE {
   /**
    * / addReminder: only authenticated users (#user) can add reminders.
    */
-  'addReminder' : ActorMethod<[string, Time, [] | [bigint]], bigint>,
+  'addReminder' : ActorMethod<[string, Time], bigint>,
   'addSubject' : ActorMethod<[string], bigint>,
   /**
    * / addTarget: only authenticated users (#user) can add targets.

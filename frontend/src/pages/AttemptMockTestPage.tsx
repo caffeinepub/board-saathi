@@ -1,66 +1,31 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from '@tanstack/react-router';
-import { Clock, ChevronLeft, ChevronRight, CheckCircle } from 'lucide-react';
+import { Clock, ChevronLeft, ChevronRight, Loader2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { toast } from 'sonner';
 import { useGetMockTest, useSubmitMockTest } from '../hooks/useQueries';
-import type { MCQAnswer } from '../backend';
 
 export default function AttemptMockTestPage() {
-  const { testId } = useParams({ from: '/layout/mock-tests/$testId/attempt' });
+  const { testId: testIdStr } = useParams({ from: '/layout/mock-tests/$testId/attempt' });
   const navigate = useNavigate();
-  const testIdBig = BigInt(testId);
+  const testIdNum = parseInt(testIdStr, 10);
 
-  const { data: test, isLoading } = useGetMockTest(testIdBig);
-  const submitMockTest = useSubmitMockTest();
+  const { data: test, isLoading } = useGetMockTest(testIdNum);
+  const submitMutation = useSubmitMockTest();
 
-  const [currentIdx, setCurrentIdx] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, number>>({});
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [answers, setAnswers] = useState<Record<number, number>>({});
   const [elapsed, setElapsed] = useState(0);
   const [submitted, setSubmitted] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    if (submitted) return;
-    const interval = setInterval(() => setElapsed((e) => e + 1), 1000);
-    return () => clearInterval(interval);
-  }, [submitted]);
-
-  if (isLoading) {
-    return (
-      <div className="p-6 flex items-center justify-center min-h-64">
-        <div className="animate-spin w-8 h-8 border-2 border-teal-500 border-t-transparent rounded-full" />
-      </div>
-    );
-  }
-
-  if (!test) {
-    return (
-      <div className="p-6 text-center text-gray-500">
-        <p>Test not found.</p>
-        <Button onClick={() => navigate({ to: '/mock-tests' })} className="mt-4">Back to Tests</Button>
-      </div>
-    );
-  }
-
-  const questions = test.questions;
-  const currentQuestion = questions[currentIdx];
-
-  const handleSelectOption = (questionId: bigint, optionIdx: number) => {
-    setAnswers((prev) => ({ ...prev, [String(questionId)]: optionIdx }));
-  };
-
-  const handleSubmit = async () => {
-    setSubmitted(true);
-    const mcqAnswers: MCQAnswer[] = questions.map((q) => ({
-      questionId: q.id,
-      selectedOption: BigInt(answers[String(q.id)] ?? 999),
-    }));
-    await submitMockTest.mutateAsync({
-      testId: testIdBig,
-      answers: mcqAnswers,
-      timeTaken: BigInt(elapsed),
-    });
-    navigate({ to: '/mock-tests/$testId/report', params: { testId } });
-  };
+    timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, []);
 
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60).toString().padStart(2, '0');
@@ -68,107 +33,144 @@ export default function AttemptMockTestPage() {
     return `${m}:${s}`;
   };
 
+  const handleSelectOption = (questionId: number, optionIndex: number) => {
+    setAnswers(prev => ({ ...prev, [questionId]: optionIndex }));
+  };
+
+  const handleSubmit = async () => {
+    if (!test) return;
+    if (timerRef.current) clearInterval(timerRef.current);
+
+    const answerList = test.questions.map(q => ({
+      questionId: q.id,
+      selectedOption: answers[q.id] ?? 999,
+    }));
+
+    try {
+      const report = await submitMutation.mutateAsync({
+        testId: testIdNum,
+        answers: answerList,
+        timeTaken: elapsed,
+      });
+      setSubmitted(true);
+      toast.success(`Test submitted! Score: ${report.score}/${report.total}`);
+      navigate({ to: '/mock-tests/$testId/report', params: { testId: testIdStr } });
+    } catch {
+      toast.error('Failed to submit test');
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!test) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-4">
+        <AlertCircle className="w-12 h-12 text-destructive" />
+        <p className="text-muted-foreground">Test not found</p>
+        <Button onClick={() => navigate({ to: '/mock-tests' })}>Back to Tests</Button>
+      </div>
+    );
+  }
+
+  const currentQuestion = test.questions[currentIndex];
+  const progress = ((currentIndex + 1) / test.questions.length) * 100;
   const answeredCount = Object.keys(answers).length;
 
   return (
     <div className="p-4 md:p-6 max-w-2xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-lg font-bold text-gray-900">{test.name}</h1>
-          <p className="text-xs text-gray-400">{answeredCount}/{questions.length} answered</p>
+          <h1 className="text-lg font-bold">{test.name}</h1>
+          <p className="text-sm text-muted-foreground">{answeredCount}/{test.questions.length} answered</p>
         </div>
-        <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-xl px-3 py-1.5">
-          <Clock size={14} className="text-orange-500" />
-          <span className="text-sm font-mono font-semibold text-orange-700">{formatTime(elapsed)}</span>
+        <div className="flex items-center gap-2 bg-muted px-3 py-1.5 rounded-lg">
+          <Clock className="w-4 h-4 text-muted-foreground" />
+          <span className="font-mono text-sm font-medium">{formatTime(elapsed)}</span>
         </div>
       </div>
 
+      <Progress value={progress} className="mb-6 h-2" />
+
       {/* Question */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 mb-4 shadow-sm">
-        <div className="flex items-center gap-2 mb-3">
-          <span className="text-xs bg-teal-50 text-teal-700 px-2 py-0.5 rounded-full font-medium">
-            Q{currentIdx + 1} of {questions.length}
-          </span>
-        </div>
-        <p className="text-base font-medium text-gray-800 mb-4">{currentQuestion.questionText}</p>
-        <div className="space-y-2">
-          {currentQuestion.options.map((option, idx) => {
-            const selected = answers[String(currentQuestion.id)] === idx;
-            return (
+      <Card className="mb-6">
+        <CardContent className="p-5">
+          <div className="flex items-start gap-3 mb-4">
+            <Badge variant="outline" className="flex-shrink-0 mt-0.5">Q{currentIndex + 1}</Badge>
+            <p className="font-medium text-sm leading-relaxed">{currentQuestion.questionText}</p>
+          </div>
+          <div className="space-y-2">
+            {currentQuestion.options.map((option, idx) => (
               <button
                 key={idx}
                 onClick={() => handleSelectOption(currentQuestion.id, idx)}
-                className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-all ${
-                  selected
-                    ? 'bg-teal-50 border-teal-400 text-teal-800 font-medium'
-                    : 'bg-gray-50 border-gray-200 text-gray-700 hover:border-teal-300 hover:bg-teal-50/50'
+                className={`w-full text-left p-3 rounded-lg border text-sm transition-all ${
+                  answers[currentQuestion.id] === idx
+                    ? 'border-primary bg-primary/10 text-primary font-medium'
+                    : 'border-border hover:border-primary/50 hover:bg-muted/50'
                 }`}
               >
-                <span className="font-semibold mr-2">{String.fromCharCode(65 + idx)}.</span>
+                <span className="font-medium mr-2">{String.fromCharCode(65 + idx)}.</span>
                 {option}
               </button>
-            );
-          })}
-        </div>
-      </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Navigation */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between gap-3">
         <Button
           variant="outline"
-          size="sm"
-          onClick={() => setCurrentIdx((i) => Math.max(0, i - 1))}
-          disabled={currentIdx === 0}
+          onClick={() => setCurrentIndex(i => Math.max(0, i - 1))}
+          disabled={currentIndex === 0}
+          className="gap-1"
         >
-          <ChevronLeft size={16} className="mr-1" />
-          Previous
+          <ChevronLeft className="w-4 h-4" />Previous
         </Button>
-        {currentIdx < questions.length - 1 ? (
+
+        {/* Question navigator */}
+        <div className="flex gap-1 flex-wrap justify-center">
+          {test.questions.map((q, idx) => (
+            <button
+              key={q.id}
+              onClick={() => setCurrentIndex(idx)}
+              className={`w-7 h-7 rounded text-xs font-medium transition-colors ${
+                idx === currentIndex
+                  ? 'bg-primary text-primary-foreground'
+                  : answers[q.id] !== undefined
+                  ? 'bg-green-500 text-white'
+                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
+              }`}
+            >
+              {idx + 1}
+            </button>
+          ))}
+        </div>
+
+        {currentIndex < test.questions.length - 1 ? (
           <Button
-            size="sm"
-            onClick={() => setCurrentIdx((i) => i + 1)}
-            className="bg-teal-600 hover:bg-teal-700 text-white"
+            onClick={() => setCurrentIndex(i => Math.min(test.questions.length - 1, i + 1))}
+            className="gap-1"
           >
-            Next
-            <ChevronRight size={16} className="ml-1" />
+            Next<ChevronRight className="w-4 h-4" />
           </Button>
         ) : (
           <Button
-            size="sm"
             onClick={handleSubmit}
-            disabled={submitMockTest.isPending || submitted}
-            className="bg-green-600 hover:bg-green-700 text-white"
+            disabled={submitMutation.isPending || submitted}
+            className="gap-1 bg-green-600 hover:bg-green-700"
           >
-            <CheckCircle size={16} className="mr-1" />
-            {submitMockTest.isPending ? 'Submitting...' : 'Submit'}
+            {submitMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+            Submit
           </Button>
         )}
-      </div>
-
-      {/* Question navigator */}
-      <div className="bg-white border border-gray-100 rounded-xl p-3">
-        <p className="text-xs text-gray-400 mb-2">Question Navigator</p>
-        <div className="flex flex-wrap gap-1.5">
-          {questions.map((q, idx) => {
-            const answered = answers[String(q.id)] !== undefined;
-            return (
-              <button
-                key={String(q.id)}
-                onClick={() => setCurrentIdx(idx)}
-                className={`w-8 h-8 rounded-lg text-xs font-medium transition-colors ${
-                  idx === currentIdx
-                    ? 'bg-teal-600 text-white'
-                    : answered
-                    ? 'bg-teal-100 text-teal-700'
-                    : 'bg-gray-100 text-gray-500'
-                }`}
-              >
-                {idx + 1}
-              </button>
-            );
-          })}
-        </div>
       </div>
     </div>
   );

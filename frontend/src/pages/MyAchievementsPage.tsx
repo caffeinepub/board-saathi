@@ -52,7 +52,7 @@ export default function MyAchievementsPage() {
   const { data: achievements } = useGetAchievements();
   const { data: subjects } = useGetSubjects();
 
-  // fastestTestTime comes from backend as bigint (nanoseconds or seconds)
+  // fastestTestTime is now a number (milliseconds), not bigint
   const formatTime = (seconds: number) => {
     if (seconds === 0) return 'N/A';
     const m = Math.floor(seconds / 60);
@@ -75,19 +75,13 @@ export default function MyAchievementsPage() {
 
       {isLoading ? (
         <div className="grid grid-cols-2 gap-3">
-          {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-32 w-full" />
-          ))}
+          {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-32 w-full" />)}
         </div>
       ) : (
         <>
           {/* Rank Card */}
           {personalBest && (
-            <div
-              className={`relative overflow-hidden rounded-2xl bg-gradient-to-r ${getRankColor(
-                personalBest.rankLabel
-              )} p-6 text-white`}
-            >
+            <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-r ${getRankColor(personalBest.rankLabel)} p-6 text-white`}>
               <div className="flex items-center gap-4">
                 <div className="w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center">
                   {getRankIcon(personalBest.rankLabel)}
@@ -133,7 +127,7 @@ export default function MyAchievementsPage() {
             />
             <AchievementCard
               title="Fastest Test"
-              value={formatTime(Number(personalBest?.fastestTestTime ?? 0))}
+              value={formatTime(personalBest?.fastestTestTime ?? 0)}
               icon={<TrendingUp className="w-5 h-5 text-white" />}
               description="Quickest test completion"
               gradient="from-green-500 to-teal-500"
@@ -152,9 +146,9 @@ export default function MyAchievementsPage() {
               <CardContent className="space-y-2">
                 {personalBest.highestScorePerSubject.map(([subjectId, score]) => {
                   const subject = subjects?.find((s) => s.id === subjectId);
-                  const pct = Number(score);
+                  const pct = score;
                   return (
-                    <div key={String(subjectId)} className="flex items-center gap-3">
+                    <div key={subjectId} className="flex items-center gap-3">
                       <span className="text-sm font-medium w-40 truncate">
                         {subject?.name ?? `Subject ${subjectId}`}
                       </span>
@@ -186,21 +180,18 @@ export default function MyAchievementsPage() {
                   {achievements.map((ach) => {
                     const label = ach.achievementType.replace(/-/g, ' ');
                     const emoji =
-                      ach.achievementType.includes('30')
-                        ? '👑'
-                        : ach.achievementType.includes('7')
-                        ? '🏆'
-                        : '🏅';
+                      ach.achievementType.includes('30') ? '👑' :
+                      ach.achievementType.includes('7') ? '🏆' : '🏅';
                     return (
                       <div
-                        key={String(ach.id)}
+                        key={ach.id}
                         className="flex items-center gap-2 px-3 py-2 rounded-xl bg-muted border"
                       >
                         <span className="text-lg">{emoji}</span>
                         <div>
                           <p className="text-xs font-semibold capitalize">{label}</p>
                           <p className="text-xs text-muted-foreground">
-                            {new Date(Number(ach.achievedAt) / 1_000_000).toLocaleDateString('en-IN')}
+                            {new Date(ach.achievedAt).toLocaleDateString('en-IN')}
                           </p>
                         </div>
                       </div>
