@@ -1,31 +1,37 @@
 import Text "mo:core/Text";
 import Array "mo:core/Array";
 import Time "mo:core/Time";
-import Order "mo:core/Order";
-import Principal "mo:core/Principal";
-import Set "mo:core/Set";
-import Runtime "mo:core/Runtime";
+import Map "mo:core/Map";
+import List "mo:core/List";
 import Nat "mo:core/Nat";
 import Int "mo:core/Int";
-import Map "mo:core/Map";
+import Iter "mo:core/Iter";
+import Runtime "mo:core/Runtime";
+import Principal "mo:core/Principal";
 import Authorization "authorization/access-control";
 import MixinAuthorization "authorization/MixinAuthorization";
-
-
 
 actor {
   let accessControlState = Authorization.initState();
   include MixinAuthorization(accessControlState);
 
-  //
-  // ───────────────────────────────────────────────────────────────────────────────────────── CBSE Board App Types ─────
+  public type Password = {
+    hash : Text;
+  };
 
-  /// User Profile (required by instructions)
-  public type UserProfile = {
+  public type StudentProfile = {
     name : Text;
     username : Text;
     school : Text;
     studentClass : Nat;
+    password : Password;
+  };
+
+  public type ParentProfile = {
+    name : Text;
+    username : Text;
+    linkedStudentUsername : Text;
+    password : Password;
   };
 
   public type Subject = {
@@ -185,8 +191,56 @@ actor {
     rankLabel : Text;
   };
 
-  /// Main persistent state variables
-  // WARNING: All persistent state must be constructed using `Map.fromIter` to avoid initialization errors
+  public type FeedbackType = {
+    #comment;
+    #appreciate;
+    #scold;
+  };
+
+  public type StudentFeedback = {
+    id : Nat;
+    parent : Principal;
+    student : Principal;
+    feedbackType : FeedbackType;
+    message : Text;
+    createdAt : Time.Time;
+  };
+
+  public type UserProfile = {
+    name : Text;
+    username : Text;
+    school : Text;
+    studentClass : Nat;
+  };
+
+  public type ChatMessage = {
+    id : Nat;
+    senderId : Principal;
+    senderRole : Text;
+    content : Text;
+    timestamp : Time.Time;
+    isRead : Bool;
+  };
+
+  public type PresenceInfo = {
+    lastSeen : Time.Time;
+    isOnline : Bool;
+  };
+
+  public type TypingStatus = {
+    userId : Principal;
+    isTyping : Bool;
+    timestamp : Time.Time;
+  };
+
+  // Persistent state variables
+  var chatMessages = List.empty<ChatMessage>();
+  var userPresence = Map.empty<Principal, PresenceInfo>();
+  var typingStatus = Map.empty<Principal, TypingStatus>();
+
+  var studentProfiles = Map.empty<Principal, StudentProfile>();
+  var parentProfiles = Map.empty<Text, ParentProfile>();
+
   var userProfiles = Map.empty<Principal, UserProfile>();
   var userSubjects = Map.empty<Principal, [Subject]>();
   var userChapters = Map.empty<Principal, [Chapter]>();
@@ -201,6 +255,7 @@ actor {
   var userRevisionTasks = Map.empty<Principal, [RevisionTask]>();
   var userStudyStreaks = Map.empty<Principal, StudyStreak>();
   var userAchievements = Map.empty<Principal, [UserAchievement]>();
+  var userStudentFeedback = Map.empty<Principal, [StudentFeedback]>();
 
   var subjectIdCounter : Nat = 0;
   var chapterIdCounter : Nat = 0;
@@ -214,20 +269,16 @@ actor {
   var revisionIdCounter : Nat = 0;
   var flashcardIdCounter : Nat = 0;
   var achievementIdCounter : Nat = 0;
+  var studentFeedbackIdCounter : Nat = 0;
+  var messageIdCounter : Nat = 0;
 
-  //
-  // ───────────────────────────────────────────────────────────────────────────────────────────── Helpers ─────
-
-  /// Returns the number of nanoseconds in one day
   func oneDayNs() : Int { 86_400_000_000_000 };
 
-  /// Compute a day-level timestamp (truncate to day boundary in nanoseconds)
   func dayTimestamp(t : Time.Time) : Int {
     let d = oneDayNs();
     (t / d) * d;
   };
 
-  /// Check and update study streak for a user; award milestone achievements
   func updateStreak(caller : Principal) {
     let now = Time.now();
     let todayTs = dayTimestamp(now);
@@ -236,20 +287,12 @@ actor {
       case (null) { { currentStreak = 0; lastActiveDate = 0; topStreak = 0 } };
     };
     let lastDay = dayTimestamp(streak.lastActiveDate);
-    if (lastDay == todayTs) {
-      // Already updated today, nothing to do
-      return;
-    };
+    if (lastDay == todayTs) { return };
     let yesterday = todayTs - oneDayNs();
-    let newStreak : Nat = if (lastDay == yesterday) {
-      streak.currentStreak + 1;
-    } else {
-      1;
-    };
+    let newStreak : Nat = if (lastDay == yesterday) { streak.currentStreak + 1 } else { 1 };
     let newTop = if (newStreak > streak.topStreak) { newStreak } else { streak.topStreak };
     userStudyStreaks.add(caller, { currentStreak = newStreak; lastActiveDate = now; topStreak = newTop });
 
-    // Award milestone achievements
     let milestones = [3, 7, 30];
     let existing = switch (userAchievements.get(caller)) {
       case (?a) { a };
@@ -274,7 +317,6 @@ actor {
     userAchievements.add(caller, updated);
   };
 
-  /// Schedule spaced-repetition revision tasks for a chapter
   func scheduleRevisionTasks(caller : Principal, chapterId : Nat, subjectId : Nat) {
     let now = Time.now();
     let intervals : [Nat] = [1, 3, 7, 21];
@@ -289,7 +331,6 @@ actor {
       let dueDate = now + (days * 86_400_000_000_000);
       revisionIdCounter += 1;
 
-      // Also create a planner task for this revision
       plannerTaskIdCounter += 1;
       let plannerTask : PlannerTask = {
         id = plannerTaskIdCounter;
@@ -319,23 +360,23 @@ actor {
     userRevisionTasks.add(caller, updated);
   };
 
-  //
-  // ───────────────────────────────────────────────────────────────────────────────────────────── Registration ─────
-
-  /// Register is open to anyone (guests), since users need to register before having a #user role.
-  public shared ({ caller }) func register(username : Text, name : Text, school : Text, studentClass : Nat) : async () {
-    switch (userProfiles.get(caller)) {
-      case (?_) { Runtime.trap("User already registered") };
-      case (null) {};
+  // Student account registration with password - open to all (guests can register)
+  public shared ({ caller }) func registerStudent(username : Text, name : Text, school : Text, studentClass : Nat, password : Text) : async () {
+    let existing = studentProfiles.values().any(func(profile) { profile.username == username });
+    if (existing) {
+      Runtime.trap("Username already taken");
     };
 
-    let taken = userProfiles.values().any(func(p) { p.username == username });
-    if (taken) { Runtime.trap("Username already taken") };
+    let profile : StudentProfile = {
+      name;
+      username;
+      school;
+      studentClass;
+      password = { hash = password };
+    };
 
-    let profile : UserProfile = { name; username; school; studentClass };
-    userProfiles.add(caller, profile);
+    studentProfiles.add(caller, profile);
 
-    // Seed subjects
     let subjectNames = [
       "Mathematics",
       "English",
@@ -351,12 +392,37 @@ actor {
     };
     userSubjects.add(caller, seeded);
 
-    // Initialize streak & achievements
     userStudyStreaks.add(caller, { currentStreak = 0; lastActiveDate = 0; topStreak = 0 });
     userAchievements.add(caller, []);
   };
 
-  /// getCallerUserProfile: only authenticated users (#user) can call this.
+  // Parent account registration - open to all (guests can register)
+  public shared ({ caller }) func registerParent(username : Text, name : Text, linkedStudentUsername : Text, password : Text) : async () {
+    switch (parentProfiles.get(username)) {
+      case (?_) { Runtime.trap("Username already taken") };
+      case (null) {};
+    };
+
+    let profile : ParentProfile = {
+      name;
+      username;
+      linkedStudentUsername;
+      password = { hash = password };
+    };
+    parentProfiles.add(username, profile);
+  };
+
+  // Query parent profile by username - only accessible to registered users (password hash is sensitive)
+  public query ({ caller }) func getParentByUsername(username : Text) : async ?ParentProfile {
+    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
+      Runtime.trap("Unauthorized: Only registered users can look up parent profiles");
+    };
+    switch (parentProfiles.get(username)) {
+      case (?profile) { ?profile };
+      case (null) { null };
+    };
+  };
+
   public query ({ caller }) func getCallerUserProfile() : async ?UserProfile {
     if (not Authorization.hasPermission(accessControlState, caller, #user)) {
       Runtime.trap("Unauthorized: Only users can get profiles");
@@ -364,7 +430,6 @@ actor {
     userProfiles.get(caller);
   };
 
-  /// getUserProfile: users can only view their own profile; admins can view any.
   public query ({ caller }) func getUserProfile(user : Principal) : async ?UserProfile {
     if (caller != user and not Authorization.isAdmin(accessControlState, caller)) {
       Runtime.trap("Unauthorized: Can only view your own profile");
@@ -372,7 +437,6 @@ actor {
     userProfiles.get(user);
   };
 
-  /// saveCallerUserProfile: only authenticated users (#user) can save their own profile.
   public shared ({ caller }) func saveCallerUserProfile(profile : UserProfile) : async () {
     if (not Authorization.hasPermission(accessControlState, caller, #user)) {
       Runtime.trap("Unauthorized: Only users can save profiles");
@@ -380,911 +444,251 @@ actor {
     userProfiles.add(caller, profile);
   };
 
-  //
-  // ───────────────────────────────────────────────────────────────────────────────────────────── Subjects ─────
-
-  public shared ({ caller }) func addSubject(name : Text) : async Nat {
+  // Feedback panel methods
+  public shared ({ caller }) func addStudentFeedback(student : Principal, message : Text, feedbackType : FeedbackType) : async Nat {
     if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can add subjects");
+      Runtime.trap("Unauthorized: Only registered users can add feedback");
     };
+    studentFeedbackIdCounter += 1;
 
-    subjectIdCounter += 1;
-    let subject : Subject = {
-      id = subjectIdCounter;
-      name;
-    };
-
-    let existingSubjects = switch (userSubjects.get(caller)) {
-      case (?subjects) { subjects };
-      case (null) { [] };
-    };
-    userSubjects.add(caller, existingSubjects.concat([subject]));
-    subjectIdCounter;
-  };
-
-  /// getSubjects: only authenticated users (#user) can view their subjects.
-  public query ({ caller }) func getSubjects() : async [Subject] {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can view subjects");
-    };
-    switch (userSubjects.get(caller)) {
-      case (?subjects) { subjects };
-      case (null) { [] };
-    };
-  };
-
-  //
-  // ───────────────────────────────────────────────────────────────────────────────────────────── Chapters ─────
-
-  /// addChapter: only authenticated users (#user) can add chapters.
-  public shared ({ caller }) func addChapter(subjectId : Nat, name : Text, weightage : Nat) : async Nat {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can add chapters");
-    };
-    chapterIdCounter += 1;
-    let chapter : Chapter = {
-      id = chapterIdCounter;
-      subjectId;
-      name;
-      weightage;
-      completed = false;
-    };
-    let existing = switch (userChapters.get(caller)) {
-      case (?chapters) { chapters };
-      case (null) { [] };
-    };
-    userChapters.add(caller, existing.concat([chapter]));
-    chapterIdCounter;
-  };
-
-  /// getChaptersForSubject: only authenticated users (#user) can view their chapters.
-  public query ({ caller }) func getChaptersForSubject(subjectId : Nat) : async [Chapter] {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can view chapters");
-    };
-    let all = switch (userChapters.get(caller)) {
-      case (?chapters) { chapters };
-      case (null) { [] };
-    };
-    all.filter(func(c : Chapter) : Bool { c.subjectId == subjectId });
-  };
-
-  /// markChapterCompleted: only authenticated users (#user) can update their chapters.
-  /// When a chapter is marked complete, revision tasks are automatically scheduled.
-  public shared ({ caller }) func markChapterCompleted(chapterId : Nat, completed : Bool) : async () {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can update chapters");
-    };
-    let all = switch (userChapters.get(caller)) {
-      case (?chapters) { chapters };
-      case (null) { Runtime.trap("No chapters found") };
-    };
-    // Find the chapter to get its subjectId
-    let chapterOpt = all.find(func(c : Chapter) : Bool { c.id == chapterId });
-    let updated = all.map(
-      func(c : Chapter) : Chapter {
-        if (c.id == chapterId) { { c with completed } } else { c };
-      },
-    );
-    userChapters.add(caller, updated);
-
-    // Schedule revision tasks when a chapter is newly marked complete
-    if (completed) {
-      switch (chapterOpt) {
-        case (?ch) {
-          // Only schedule if not already completed (avoid duplicate scheduling)
-          if (not ch.completed) {
-            scheduleRevisionTasks(caller, chapterId, ch.subjectId);
-          };
-        };
-        case (null) {};
-      };
-      updateStreak(caller);
-    };
-  };
-
-  //
-  // ─────────────────────────────────────────────────────────────────────────────────────────── Study Material ─────
-
-  /// addNote: only authenticated users (#user) can add notes.
-  public shared ({ caller }) func addNote(chapterId : Nat, content : Text, imageData : ?Text) : async Nat {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can add notes");
-    };
-    noteIdCounter += 1;
-    let note : Note = {
-      id = noteIdCounter;
-      chapterId;
-      content;
-      imageData;
+    let newFeedback : StudentFeedback = {
+      id = studentFeedbackIdCounter;
+      parent = caller;
+      student;
+      feedbackType;
+      message;
       createdAt = Time.now();
     };
-    let existing = switch (userNotes.get(caller)) {
-      case (?notes) { notes };
+
+    let existing = switch (userStudentFeedback.get(student)) {
+      case (?f) { f };
       case (null) { [] };
     };
-    userNotes.add(caller, existing.concat([note]));
-    noteIdCounter;
+
+    let updated = existing.concat([newFeedback]);
+    userStudentFeedback.add(student, updated);
+    studentFeedbackIdCounter;
   };
 
-  /// getNotesForChapter: only authenticated users (#user) can view their notes.
-  public query ({ caller }) func getNotesForChapter(chapterId : Nat) : async [Note] {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can view notes");
+  public query ({ caller }) func getFeedbackForStudent(student : Principal) : async [StudentFeedback] {
+    if (caller != student and not Authorization.isAdmin(accessControlState, caller)) {
+      Runtime.trap("Unauthorized: Can only view your own feedback");
     };
-    let all = switch (userNotes.get(caller)) {
-      case (?notes) { notes };
-      case (null) { [] };
-    };
-    all.filter(func(n : Note) : Bool { n.chapterId == chapterId });
-  };
-
-  /// deleteNote: only authenticated users (#user) can delete their own notes.
-  public shared ({ caller }) func deleteNote(noteId : Nat) : async () {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can delete notes");
-    };
-    let all = switch (userNotes.get(caller)) {
-      case (?notes) { notes };
-      case (null) { Runtime.trap("No notes found") };
-    };
-    let updated = all.filter(func(n : Note) : Bool { n.id != noteId });
-    userNotes.add(caller, updated);
-  };
-
-  /// addQuestion: only authenticated users (#user) can add questions.
-  public shared ({ caller }) func addQuestion(chapterId : Nat, subjectId : Nat, questionText : Text, answer : Text) : async Nat {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can add questions");
-    };
-    questionIdCounter += 1;
-    let question : Question = {
-      id = questionIdCounter;
-      chapterId;
-      subjectId;
-      questionText;
-      answer;
-    };
-    let existing = switch (userQuestions.get(caller)) {
-      case (?questions) { questions };
-      case (null) { [] };
-    };
-    userQuestions.add(caller, existing.concat([question]));
-    questionIdCounter;
-  };
-
-  /// getQuestionsForChapter: only authenticated users (#user) can view their questions.
-  public query ({ caller }) func getQuestionsForChapter(chapterId : Nat) : async [Question] {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can view questions");
-    };
-    let all = switch (userQuestions.get(caller)) {
-      case (?questions) { questions };
-      case (null) { [] };
-    };
-    all.filter(func(q : Question) : Bool { q.chapterId == chapterId });
-  };
-
-  /// deleteQuestion: only authenticated users (#user) can delete their own questions.
-  public shared ({ caller }) func deleteQuestion(questionId : Nat) : async () {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can delete questions");
-    };
-    let all = switch (userQuestions.get(caller)) {
-      case (?questions) { questions };
-      case (null) { Runtime.trap("No questions found") };
-    };
-    let updated = all.filter(func(q : Question) : Bool { q.id != questionId });
-    userQuestions.add(caller, updated);
-  };
-
-  //
-  // ────────────────────────────────────────────────────────────────────────────────────────────── Flashcards ─────
-
-  /// addFlashcard: only authenticated users (#user) can add flashcards.
-  public shared ({ caller }) func addFlashcard(chapterId : Nat, subjectId : Nat, front : Text, back : Text) : async Nat {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can add flashcards");
-    };
-    flashcardIdCounter += 1;
-    let card : Flashcard = {
-      id = flashcardIdCounter;
-      chapterId;
-      subjectId;
-      front;
-      back;
-      learned = false;
-    };
-    let existing = switch (userFlashcards.get(caller)) {
-      case (?flashcards) { flashcards };
-      case (null) { [] };
-    };
-    userFlashcards.add(caller, existing.concat([card]));
-    flashcardIdCounter;
-  };
-
-  /// getFlashcardsForChapter: only authenticated users (#user) can view their flashcards.
-  public query ({ caller }) func getFlashcardsForChapter(chapterId : Nat) : async [Flashcard] {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can view flashcards");
-    };
-    let all = switch (userFlashcards.get(caller)) {
-      case (?flashcards) { flashcards };
-      case (null) { [] };
-    };
-    all.filter(func(f : Flashcard) : Bool { f.chapterId == chapterId });
-  };
-
-  /// getAllFlashcards: only authenticated users (#user) can view all their flashcards.
-  public query ({ caller }) func getAllFlashcards() : async [Flashcard] {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can view flashcards");
-    };
-    switch (userFlashcards.get(caller)) {
-      case (?flashcards) { flashcards };
+    switch (userStudentFeedback.get(student)) {
+      case (?feedback) { feedback };
       case (null) { [] };
     };
   };
 
-  /// markFlashcardLearned: only authenticated users (#user) can update their own flashcards.
-  public shared ({ caller }) func markFlashcardLearned(cardId : Nat, learned : Bool) : async () {
+  public query ({ caller }) func getFeedbackById(feedbackId : Nat) : async StudentFeedback {
     if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can update flashcards");
+      Runtime.trap("Unauthorized: Only users can view feedback");
     };
-    let all = switch (userFlashcards.get(caller)) {
-      case (?flashcards) { flashcards };
-      case (null) { Runtime.trap("No flashcards found") };
-    };
-    let updated = all.map(
-      func(f : Flashcard) : Flashcard {
-        if (f.id == cardId) { { f with learned } } else { f };
-      },
-    );
-    userFlashcards.add(caller, updated);
-  };
-
-  /// deleteFlashcard: only authenticated users (#user) can delete their own flashcards.
-  public shared ({ caller }) func deleteFlashcard(cardId : Nat) : async () {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can delete flashcards");
-    };
-    let all = switch (userFlashcards.get(caller)) {
-      case (?flashcards) { flashcards };
-      case (null) { Runtime.trap("No flashcards found") };
-    };
-    let updated = all.filter(func(f : Flashcard) : Bool { f.id != cardId });
-    userFlashcards.add(caller, updated);
-  };
-
-  //
-  // ────────────────────────────────────────────────────────────────────────────────────────────── Question Bank ─────
-
-  /// getQuestionBank: only authenticated users (#user) can view the question bank.
-  public query ({ caller }) func getQuestionBank(subjectIdFilter : ?Nat, chapterIdFilter : ?Nat) : async [Question] {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can view the question bank");
-    };
-    let all = switch (userQuestions.get(caller)) {
-      case (?questions) { questions };
-      case (null) { [] };
-    };
-    all.filter(
-      func(q : Question) : Bool {
-        let subjectMatch = switch (subjectIdFilter) {
-          case (?sid) { q.subjectId == sid };
-          case (null) { true };
+    var found : ?StudentFeedback = null;
+    for ((_, entries) in userStudentFeedback.entries()) {
+      for (f in entries.vals()) {
+        if (f.id == feedbackId) {
+          found := ?f;
         };
-        let chapterMatch = switch (chapterIdFilter) {
-          case (?cid) { q.chapterId == cid };
-          case (null) { true };
+      };
+    };
+    switch (found) {
+      case (?f) {
+        if (caller != f.student and caller != f.parent and not Authorization.isAdmin(accessControlState, caller)) {
+          Runtime.trap("Unauthorized: You do not have access to this feedback");
         };
-        subjectMatch and chapterMatch;
-      },
-    );
-  };
-
-  //
-  // ─────────────────────────────────────────────────────────────────────────────────────────── Daily Study Planner ─────
-
-  /// addPlannerTask: only authenticated users (#user) can add planner tasks.
-  public shared ({ caller }) func addPlannerTask(title : Text, description : Text, date : Time.Time, startTime : Text) : async Nat {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can add planner tasks");
-    };
-    plannerTaskIdCounter += 1;
-    let task : PlannerTask = {
-      id = plannerTaskIdCounter;
-      title;
-      description;
-      date;
-      startTime;
-      completed = false;
-    };
-    let existing = switch (userPlannerTasks.get(caller)) {
-      case (?tasks) { tasks };
-      case (null) { [] };
-    };
-    userPlannerTasks.add(caller, existing.concat([task]));
-    plannerTaskIdCounter;
-  };
-
-  /// getPlannerTasksForDate: only authenticated users (#user) can view their planner tasks.
-  public query ({ caller }) func getPlannerTasksForDate(date : Time.Time) : async [PlannerTask] {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can view planner tasks");
-    };
-    let all = switch (userPlannerTasks.get(caller)) {
-      case (?tasks) { tasks };
-      case (null) { [] };
-    };
-    all.filter(func(t : PlannerTask) : Bool { t.date == date });
-  };
-
-  /// getPlannerTasksForMonth: only authenticated users (#user) can view their planner tasks.
-  public query ({ caller }) func getPlannerTasksForMonth(_year : Nat, _month : Nat) : async [PlannerTask] {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can view planner tasks");
-    };
-    let all = switch (userPlannerTasks.get(caller)) {
-      case (?tasks) { tasks };
-      case (null) { [] };
-    };
-    all;
-  };
-
-  /// getAllPlannerTasks: only authenticated users (#user) can view all their planner tasks.
-  public query ({ caller }) func getAllPlannerTasks() : async [PlannerTask] {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can view planner tasks");
-    };
-    switch (userPlannerTasks.get(caller)) {
-      case (?tasks) { tasks };
-      case (null) { [] };
+        f;
+      };
+      case (null) {
+        Runtime.trap("No feedback found with that ID");
+      };
     };
   };
 
-  /// completePlannerTask: only authenticated users (#user) can update their own planner tasks.
-  /// Completing a task also updates the study streak.
-  public shared ({ caller }) func completePlannerTask(taskId : Nat, completed : Bool) : async () {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can update planner tasks");
+  public query ({ caller }) func getFeedbackFromParent(parent : Principal) : async [StudentFeedback] {
+    if (caller != parent and not Authorization.isAdmin(accessControlState, caller)) {
+      Runtime.trap("Unauthorized: Can only view your own submitted feedback");
     };
-    let all = switch (userPlannerTasks.get(caller)) {
-      case (?tasks) { tasks };
-      case (null) { Runtime.trap("No tasks found") };
-    };
-    let updated = all.map(
-      func(t : PlannerTask) : PlannerTask {
-        if (t.id == taskId) { { t with completed } } else { t };
-      },
-    );
-    userPlannerTasks.add(caller, updated);
-    if (completed) {
-      updateStreak(caller);
-    };
-  };
-
-  /// deletePlannerTask: only authenticated users (#user) can delete their own planner tasks.
-  public shared ({ caller }) func deletePlannerTask(taskId : Nat) : async () {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can delete planner tasks");
-    };
-    let all = switch (userPlannerTasks.get(caller)) {
-      case (?tasks) { tasks };
-      case (null) { Runtime.trap("No tasks found") };
-    };
-    let updated = all.filter(func(t : PlannerTask) : Bool { t.id != taskId });
-    userPlannerTasks.add(caller, updated);
-  };
-
-  //
-  // ─────────────────────────────────────────────────────────────────────────────────────────── Reminders ─────
-
-  /// addReminder: only authenticated users (#user) can add reminders.
-  public shared ({ caller }) func addReminder(text : Text, dateTime : Time.Time) : async Nat {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can add reminders");
-    };
-    reminderIdCounter += 1;
-    let reminder : Reminder = {
-      id = reminderIdCounter;
-      text;
-      dateTime;
-    };
-    let existing = switch (userReminders.get(caller)) {
-      case (?reminders) { reminders };
-      case (null) { [] };
-    };
-    userReminders.add(caller, existing.concat([reminder]));
-    reminderIdCounter;
-  };
-
-  /// getReminders: only authenticated users (#user) can view their reminders.
-  public query ({ caller }) func getReminders() : async [Reminder] {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can view reminders");
-    };
-    let all = switch (userReminders.get(caller)) {
-      case (?reminders) { reminders };
-      case (null) { [] };
-    };
-    all.sort(func(a : Reminder, b : Reminder) : Order.Order { Int.compare(a.dateTime, b.dateTime) });
-  };
-
-  /// deleteReminder: only authenticated users (#user) can delete their own reminders.
-  public shared ({ caller }) func deleteReminder(reminderId : Nat) : async () {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can delete reminders");
-    };
-    let all = switch (userReminders.get(caller)) {
-      case (?reminders) { reminders };
-      case (null) { Runtime.trap("No reminders found") };
-    };
-    let updated = all.filter(func(r : Reminder) : Bool { r.id != reminderId });
-    userReminders.add(caller, updated);
-  };
-
-  //
-  // ─────────────────────────────────────────────────────────────────────────────────────────── Targets ─────
-
-  /// addTarget: only authenticated users (#user) can add targets.
-  public shared ({ caller }) func addTarget(title : Text, description : Text, deadline : Time.Time) : async Nat {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can add targets");
-    };
-    targetIdCounter += 1;
-    let target : Target = {
-      id = targetIdCounter;
-      title;
-      description;
-      deadline;
-      completed = false;
-    };
-    let existing = switch (userTargets.get(caller)) {
-      case (?targets) { targets };
-      case (null) { [] };
-    };
-    userTargets.add(caller, existing.concat([target]));
-    targetIdCounter;
-  };
-
-  /// getTargets: only authenticated users (#user) can view their targets.
-  public query ({ caller }) func getTargets() : async [Target] {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can view targets");
-    };
-    switch (userTargets.get(caller)) {
-      case (?targets) { targets };
-      case (null) { [] };
-    };
-  };
-
-  /// completeTarget: only authenticated users (#user) can update their own targets.
-  public shared ({ caller }) func completeTarget(targetId : Nat, completed : Bool) : async () {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can update targets");
-    };
-    let all = switch (userTargets.get(caller)) {
-      case (?targets) { targets };
-      case (null) { Runtime.trap("No targets found") };
-    };
-    let updated = all.map(
-      func(t : Target) : Target {
-        if (t.id == targetId) { { t with completed } } else { t };
-      },
-    );
-    userTargets.add(caller, updated);
-  };
-
-  /// deleteTarget: only authenticated users (#user) can delete their own targets.
-  public shared ({ caller }) func deleteTarget(targetId : Nat) : async () {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can delete targets");
-    };
-    let all = switch (userTargets.get(caller)) {
-      case (?targets) { targets };
-      case (null) { Runtime.trap("No targets found") };
-    };
-    let updated = all.filter(func(t : Target) : Bool { t.id != targetId });
-    userTargets.add(caller, updated);
-  };
-
-  //
-  // ─────────────────────────────────────────────────────────────────────────────────────────────── Mock Tests ─────
-
-  /// createMockTest: only authenticated users (#user) can create mock tests.
-  public shared ({ caller }) func createMockTest(name : Text, subjectId : Nat, questions : [MCQQuestion]) : async Nat {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can create mock tests");
-    };
-    mockTestIdCounter += 1;
-    let test : MockTest = {
-      id = mockTestIdCounter;
-      name;
-      subjectId;
-      questions;
-    };
-    let existing = switch (userMockTests.get(caller)) {
-      case (?tests) { tests };
-      case (null) { [] };
-    };
-    userMockTests.add(caller, existing.concat([test]));
-    mockTestIdCounter;
-  };
-
-  /// getMockTests: only authenticated users (#user) can view their mock tests.
-  public query ({ caller }) func getMockTests() : async [MockTest] {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can view mock tests");
-    };
-    switch (userMockTests.get(caller)) {
-      case (?tests) { tests };
-      case (null) { [] };
-    };
-  };
-
-  /// getMockTest: only authenticated users (#user) can view a specific mock test.
-  public query ({ caller }) func getMockTest(testId : Nat) : async ?MockTest {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can view mock tests");
-    };
-    let all = switch (userMockTests.get(caller)) {
-      case (?tests) { tests };
-      case (null) { [] };
-    };
-    all.find(func(t : MockTest) : Bool { t.id == testId });
-  };
-
-  /// deleteMockTest: only authenticated users (#user) can delete their own mock tests.
-  public shared ({ caller }) func deleteMockTest(testId : Nat) : async () {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can delete mock tests");
-    };
-    let all = switch (userMockTests.get(caller)) {
-      case (?tests) { tests };
-      case (null) { Runtime.trap("No mock tests found") };
-    };
-    let updated = all.filter(func(t : MockTest) : Bool { t.id != testId });
-    userMockTests.add(caller, updated);
-  };
-
-  /// submitMockTest: only authenticated users (#user) can submit mock tests.
-  public shared ({ caller }) func submitMockTest(testId : Nat, answers : [MCQAnswer], timeTaken : Int) : async TestReport {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can submit mock tests");
-    };
-    let allTests = switch (userMockTests.get(caller)) {
-      case (?tests) { tests };
-      case (null) { Runtime.trap("No mock tests found") };
-    };
-    let testOpt = allTests.find(func(t : MockTest) : Bool { t.id == testId });
-    let test = switch (testOpt) {
-      case (?t) { t };
-      case (null) { Runtime.trap("Mock test not found") };
-    };
-
-    var score : Nat = 0;
-    let results = test.questions.map(
-      func(q : MCQQuestion) : QuestionResult {
-        let answerOpt = answers.find(func(a : MCQAnswer) : Bool { a.questionId == q.id });
-        let selected = switch (answerOpt) {
-          case (?a) { a.selectedOption };
-          case (null) { 999 };
+    var result : [StudentFeedback] = [];
+    for ((_, entries) in userStudentFeedback.entries()) {
+      for (f in entries.vals()) {
+        if (f.parent == parent) {
+          result := result.concat([f]);
         };
-        let isCorrect = selected == q.correctOption;
-        if (isCorrect) { score += 1 };
-        {
-          questionId = q.id;
-          questionText = q.questionText;
-          selectedOption = selected;
-          correctOption = q.correctOption;
-          isCorrect;
+      };
+    };
+    result;
+  };
+
+  public shared ({ caller }) func deleteFeedback(feedbackId : Nat) : async () {
+    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
+      Runtime.trap("Unauthorized: Only registered users can delete feedback");
+    };
+    var found : ?StudentFeedback = null;
+    for ((_, entries) in userStudentFeedback.entries()) {
+      for (f in entries.vals()) {
+        if (f.id == feedbackId) {
+          found := ?f;
         };
-      },
-    );
-
-    let total = test.questions.size();
-    let percentage = if (total == 0) { 0 } else { (score * 100) / total };
-
-    let report : TestReport = {
-      testId;
-      testName = test.name;
-      score;
-      total;
-      percentage;
-      timeTaken;
-      results;
+      };
     };
-
-    testAttemptIdCounter += 1;
-    let attempt : TestAttempt = {
-      id = testAttemptIdCounter;
-      testId;
-      report;
-      attemptedAt = Time.now();
+    let feedbackRecord = switch (found) {
+      case (?f) { f };
+      case (null) { Runtime.trap("No feedback found with that ID") };
     };
-    let existingAttempts = switch (userTestAttempts.get(caller)) {
-      case (?attempts) { attempts };
-      case (null) { [] };
+    if (feedbackRecord.parent != caller and not Authorization.isAdmin(accessControlState, caller)) {
+      Runtime.trap("Unauthorized: Only the parent who submitted the feedback can delete it");
     };
-    userTestAttempts.add(caller, existingAttempts.concat([attempt]));
-
-    // Submitting a test counts as activity for streak
-    updateStreak(caller);
-
-    report;
+    let existingFeedback = switch (userStudentFeedback.get(feedbackRecord.student)) {
+      case (?f) { f };
+      case (null) { Runtime.trap("No feedback found for this student") };
+    };
+    let filtered = existingFeedback.filter(func(f : StudentFeedback) : Bool { f.id != feedbackId });
+    userStudentFeedback.add(feedbackRecord.student, filtered);
   };
 
-  /// getTestAttempts: only authenticated users (#user) can view their test attempts.
-  public query ({ caller }) func getTestAttempts() : async [TestAttempt] {
+  public shared ({ caller }) func updateFeedback(feedbackId : Nat, updatedMessage : Text, feedbackType : FeedbackType) : async () {
     if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can view test attempts");
+      Runtime.trap("Unauthorized: Only registered users can update feedback");
     };
-    switch (userTestAttempts.get(caller)) {
-      case (?attempts) { attempts };
-      case (null) { [] };
-    };
-  };
-
-  /// getTestAttemptsForTest: only authenticated users (#user) can view test attempts for a specific test.
-  public query ({ caller }) func getTestAttemptsForTest(testId : Nat) : async [TestAttempt] {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can view test attempts");
-    };
-    let all = switch (userTestAttempts.get(caller)) {
-      case (?attempts) { attempts };
-      case (null) { [] };
-    };
-    all.filter(func(a : TestAttempt) : Bool { a.testId == testId });
-  };
-
-  //
-  // ────────────────────────────────────────────────────────────────────────────────────────────── Revision Tasks ─────
-
-  /// getRevisionTasks: only authenticated users (#user) can view their revision tasks.
-  public query ({ caller }) func getRevisionTasks() : async [RevisionTask] {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can view revision tasks");
-    };
-    switch (userRevisionTasks.get(caller)) {
-      case (?tasks) { tasks };
-      case (null) { [] };
-    };
-  };
-
-  /// getPendingRevisionTasks: only authenticated users (#user) can view their pending revision tasks.
-  public query ({ caller }) func getPendingRevisionTasks() : async [RevisionTask] {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can view revision tasks");
-    };
-    let all = switch (userRevisionTasks.get(caller)) {
-      case (?tasks) { tasks };
-      case (null) { [] };
-    };
-    all.filter(func(r : RevisionTask) : Bool { not r.completed });
-  };
-
-  /// markRevisionTaskCompleted: only authenticated users (#user) can update their own revision tasks.
-  public shared ({ caller }) func markRevisionTaskCompleted(revisionId : Nat, completed : Bool) : async () {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can update revision tasks");
-    };
-    let all = switch (userRevisionTasks.get(caller)) {
-      case (?tasks) { tasks };
-      case (null) { Runtime.trap("No revision tasks found") };
-    };
-    let updated = all.map(
-      func(r : RevisionTask) : RevisionTask {
-        if (r.id == revisionId) { { r with completed } } else { r };
-      },
-    );
-    userRevisionTasks.add(caller, updated);
-    if (completed) {
-      updateStreak(caller);
-    };
-  };
-
-  //
-  // ────────────────────────────────────────────────────────────────────────────────────────────── Study Streak ─────
-
-  /// getStudyStreak: only authenticated users (#user) can view their study streak.
-  public query ({ caller }) func getStudyStreak() : async StudyStreak {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can view study streak");
-    };
-    switch (userStudyStreaks.get(caller)) {
-      case (?streak) { streak };
-      case (null) { { currentStreak = 0; lastActiveDate = 0; topStreak = 0 } };
-    };
-  };
-
-  /// recordDailyLogin: only authenticated users (#user) can record their daily login for streak tracking.
-  public shared ({ caller }) func recordDailyLogin() : async StudyStreak {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can record daily login");
-    };
-    updateStreak(caller);
-    switch (userStudyStreaks.get(caller)) {
-      case (?streak) { streak };
-      case (null) { { currentStreak = 0; lastActiveDate = 0; topStreak = 0 } };
-    };
-  };
-
-  //
-  // ────────────────────────────────────────────────────────────────────────────────────────────── Achievements ─────
-
-  /// getAchievements: only authenticated users (#user) can view their achievements.
-  public query ({ caller }) func getAchievements() : async [UserAchievement] {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can view achievements");
-    };
-    switch (userAchievements.get(caller)) {
-      case (?achievements) { achievements };
-      case (null) { [] };
-    };
-  };
-
-  //
-  // ────────────────────────────────────────────────────────────────────────────────────────────── Progress Tracker ─────
-
-  /// getProgressSummary: only authenticated users (#user) can view their progress.
-  public query ({ caller }) func getProgressSummary() : async ProgressSummary {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can view progress");
-    };
-
-    let subjects = switch (userSubjects.get(caller)) {
-      case (?s) { s };
-      case (null) { [] };
-    };
-    let chapters = switch (userChapters.get(caller)) {
-      case (?c) { c };
-      case (null) { [] };
-    };
-    let tasks = switch (userPlannerTasks.get(caller)) {
-      case (?t) { t };
-      case (null) { [] };
-    };
-    let targets = switch (userTargets.get(caller)) {
-      case (?t) { t };
-      case (null) { [] };
-    };
-    let attempts = switch (userTestAttempts.get(caller)) {
-      case (?a) { a };
-      case (null) { [] };
-    };
-
-    let subjectProgress = subjects.map(
-      func(s : Subject) : SubjectProgress {
-        let subChapters = chapters.filter(func(c : Chapter) : Bool { c.subjectId == s.id });
-        let completedCount = subChapters.filter(func(c : Chapter) : Bool { c.completed }).size();
-        {
-          subjectId = s.id;
-          subjectName = s.name;
-          totalChapters = subChapters.size();
-          completedChapters = completedCount;
+    var found : ?StudentFeedback = null;
+    for ((_, entries) in userStudentFeedback.entries()) {
+      for (f in entries.vals()) {
+        if (f.id == feedbackId) {
+          found := ?f;
         };
-      },
-    );
-
-    let completedTasks = tasks.filter(func(t : PlannerTask) : Bool { t.completed }).size();
-    let achievedTargets = targets.filter(func(t : Target) : Bool { t.completed }).size();
-
-    let totalScore = attempts.foldLeft(
-      0,
-      func(acc : Nat, a : TestAttempt) : Nat { acc + a.report.percentage },
-    );
-    let avgScore = if (attempts.size() == 0) { 0 } else { totalScore / attempts.size() };
-
-    {
-      subjectProgress;
-      totalTasksCompleted = completedTasks;
-      totalTasks = tasks.size();
-      totalTargetsAchieved = achievedTargets;
-      totalTargets = targets.size();
-      mockTestAverageScore = avgScore;
-      totalMockTestsAttempted = attempts.size();
+      };
     };
+    let feedbackRecord = switch (found) {
+      case (?f) { f };
+      case (null) { Runtime.trap("No feedback found with that ID") };
+    };
+    if (feedbackRecord.parent != caller and not Authorization.isAdmin(accessControlState, caller)) {
+      Runtime.trap("Unauthorized: Only the parent who submitted the feedback can update it");
+    };
+    let existingFeedback = switch (userStudentFeedback.get(feedbackRecord.student)) {
+      case (?f) { f };
+      case (null) { Runtime.trap("No feedback found for this student") };
+    };
+    let mapped = existingFeedback.map(func(f : StudentFeedback) : StudentFeedback {
+      if (f.id == feedbackId) {
+        { f with message = updatedMessage; feedbackType };
+      } else { f };
+    });
+    userStudentFeedback.add(feedbackRecord.student, mapped);
   };
 
-  //
-  // ────────────────────────────────────────────────────────────────────────────────────────────── Personal Best / Achievements ─────
-
-  /// getPersonalBest: only authenticated users (#user) can view their personal best stats.
-  public query ({ caller }) func getPersonalBest() : async PersonalBest {
+  // Message persistence methods
+  public shared ({ caller }) func sendMessage(recipient : Principal, senderRole : Text, content : Text) : async () {
     if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can view personal best");
+      Runtime.trap("Unauthorized: Only registered users can send messages");
     };
+    if (content == "") {
+      Runtime.trap("Cannot send empty message");
+    };
+    messageIdCounter += 1;
+    let newMessage : ChatMessage = {
+      id = messageIdCounter;
+      senderId = caller;
+      senderRole;
+      content;
+      timestamp = Time.now();
+      isRead = false;
+    };
+    chatMessages.add(newMessage);
+  };
 
-    let attempts = switch (userTestAttempts.get(caller)) {
-      case (?a) { a };
-      case (null) { [] };
+  // Returns messages between the caller and the specified user, plus online status of that user
+  public query ({ caller }) func getMessages(user : Principal) : async ([ChatMessage], Bool) {
+    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
+      Runtime.trap("Unauthorized: Only registered users can view messages");
     };
-    let chapters = switch (userChapters.get(caller)) {
-      case (?c) { c };
-      case (null) { [] };
-    };
-    let questions = switch (userQuestions.get(caller)) {
-      case (?q) { q };
-      case (null) { [] };
-    };
-    let streak = switch (userStudyStreaks.get(caller)) {
-      case (?s) { s };
-      case (null) { { currentStreak = 0; lastActiveDate = 0; topStreak = 0 } };
-    };
-    let subjects = switch (userSubjects.get(caller)) {
-      case (?s) { s };
-      case (null) { [] };
-    };
-
-    // Highest score per subject
-    let highestScorePerSubject = subjects.map<Subject, (Nat, Nat)>(
-      func(s : Subject) : (Nat, Nat) {
-        let subjectAttempts = attempts.filter(func(_a : TestAttempt) : Bool {
-          // We need to find the test to get its subjectId
-          true // simplified; frontend can filter
-        });
-        let maxScore = subjectAttempts.foldLeft(
-          0,
-          func(acc : Nat, a : TestAttempt) : Nat {
-            if (a.report.percentage > acc) { a.report.percentage } else { acc };
-          },
-        );
-        (s.id, maxScore);
+    let now = Time.now();
+    let filtered = chatMessages.toArray().filter(
+      func(msg : ChatMessage) : Bool {
+        (msg.senderId == caller) or (msg.senderId == user)
       }
     );
-
-    // Fastest test time (minimum timeTaken among all attempts, ignoring 0)
-    let fastestTime = attempts.foldLeft(
-      0 : Int,
-      func(acc : Int, a : TestAttempt) : Int {
-        if (acc == 0 or (a.report.timeTaken > 0 and a.report.timeTaken < acc)) {
-          a.report.timeTaken;
-        } else {
-          acc;
-        };
-      },
+    let sorted = filtered.sort(
+      func(a : ChatMessage, b : ChatMessage) : { #less; #equal; #greater } {
+        if (a.timestamp < b.timestamp) { #less }
+        else if (a.timestamp == b.timestamp) { #equal }
+        else { #greater };
+      }
     );
-
-    let totalChaptersCompleted = chapters.filter(func(c : Chapter) : Bool { c.completed }).size();
-    let totalQuestionsPracticed = questions.size();
-    let longestStreak = streak.topStreak;
-
-    // Rank label based on overall progress
-    let totalScore = attempts.foldLeft(
-      0,
-      func(acc : Nat, a : TestAttempt) : Nat { acc + a.report.percentage },
-    );
-    let avgScore = if (attempts.size() == 0) { 0 } else { totalScore / attempts.size() };
-
-    let rankLabel = if (totalChaptersCompleted >= 20 and avgScore >= 80 and longestStreak >= 30) {
-      "Board Champion";
-    } else if (totalChaptersCompleted >= 10 and avgScore >= 60 and longestStreak >= 7) {
-      "Rising Star";
-    } else if (totalChaptersCompleted >= 5 and avgScore >= 40) {
-      "Dedicated Learner";
-    } else {
-      "Beginner Scholar";
+    let isUserOnline = switch (userPresence.get(user)) {
+      case (?presence) { (now - presence.lastSeen) < 60_000_000_000 };
+      case (null) { false };
     };
+    (sorted, isUserOnline);
+  };
 
-    {
-      highestScorePerSubject;
-      fastestTestTime = fastestTime;
-      totalQuestionsPracticed;
-      totalChaptersCompleted;
-      longestStreak;
-      rankLabel;
+  // Mark messages from a given sender as read - only the recipient (caller) can mark messages as read
+  public shared ({ caller }) func markMessagesRead(sender : Principal) : async () {
+    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
+      Runtime.trap("Unauthorized: Only registered users can mark messages as read");
+    };
+    let updatedMessages = chatMessages.toArray().map(
+      func(msg : ChatMessage) : ChatMessage {
+        // Only mark as read if the message was sent TO the caller (caller is the recipient)
+        if (msg.senderId == sender) {
+          { msg with isRead = true };
+        } else {
+          msg;
+        };
+      }
+    );
+    chatMessages.clear();
+    chatMessages.addAll(updatedMessages.values());
+  };
+
+  // Presence tracking methods
+  public shared ({ caller }) func updatePresence(isOnline : Bool) : async () {
+    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
+      Runtime.trap("Unauthorized: Only registered users can update presence");
+    };
+    userPresence.add(caller, {
+      lastSeen = Time.now();
+      isOnline;
+    });
+  };
+
+  public query ({ caller }) func getPresence(user : Principal) : async PresenceInfo {
+    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
+      Runtime.trap("Unauthorized: Only registered users can view presence");
+    };
+    switch (userPresence.get(user)) {
+      case (?presence) { presence };
+      case (null) {
+        { lastSeen = 0; isOnline = false };
+      };
     };
   };
 
-  //
-  // ────────────────────────────────────────────────────────────────────────────────────────────── Admin ─────
-
-  /// adminListUsers: only admins can list all users.
-  public query ({ caller }) func adminListUsers() : async [Principal] {
-    if (not Authorization.isAdmin(accessControlState, caller)) {
-      Runtime.trap("Unauthorized: Only admins can list users");
+  // Typing indicator methods
+  public shared ({ caller }) func setTyping(isTyping : Bool) : async () {
+    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
+      Runtime.trap("Unauthorized: Only registered users can set typing status");
     };
-    userProfiles.keys().toArray();
+    let status : TypingStatus = {
+      userId = caller;
+      isTyping;
+      timestamp = Time.now();
+    };
+    typingStatus.add(caller, status);
+  };
+
+  public query ({ caller }) func getTypingStatus(user : Principal) : async Bool {
+    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
+      Runtime.trap("Unauthorized: Only registered users can view typing status");
+    };
+    switch (typingStatus.get(user)) {
+      case (?status) {
+        let now = Time.now();
+        let timeDiff : Int = (now - status.timestamp) / 1_000_000_000;
+        status.isTyping and timeDiff < 3;
+      };
+      case (null) { false };
+    };
   };
 };

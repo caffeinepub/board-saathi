@@ -1,127 +1,188 @@
 {
   "kind": "implementation_plan",
   "version": "1.0",
-  "title": "Homepage enhancements, timer page, bottom nav bar, and motivational target widget",
+  "title": "Upgrade Parent Dashboard Live Chat with Real-Time Messaging Features",
   "requirements": [
     {
-      "id": "REQ-1",
-      "summary": "Display a 'Days Left to End of Month' countdown banner at the very top of the homepage (Dashboard)",
-      "acceptanceCriteria": [
-        "The days-left count is shown at the top of the Dashboard page",
-        "The number updates correctly as the date changes",
-        "The banner is visually distinct and easy to read"
-      ],
-      "file_operations": [
-        {
-          "path": "frontend/src/pages/Dashboard.tsx",
-          "operation": "modify",
-          "description": "Add a countdown banner component at the top of the Dashboard that calculates and displays the number of days remaining in the current calendar month. Use JavaScript Date API to compute days left (e.g., days in month minus current day). Style the banner to be visually prominent with appropriate spacing and typography."
-        }
-      ]
-    },
-    {
       "id": "REQ-2",
-      "summary": "On the homepage (Dashboard), show a section that lists the user's upcoming reminders and active targets",
+      "summary": "Implement React Query polling loop for real-time message delivery in ParentDashboard and StudentMessagesPage",
       "acceptanceCriteria": [
-        "Reminders and targets added by the user appear on the homepage",
-        "Each item shows its title and due date/time",
-        "Section updates reactively when items are added or removed"
+        "New messages sent by one party appear on the other party's screen within 2 seconds without any manual page refresh.",
+        "Polling starts when the chat section is mounted and stops when it unmounts."
       ],
       "file_operations": [
         {
-          "path": "frontend/src/pages/Dashboard.tsx",
+          "path": "frontend/src/hooks/useQueries.ts",
           "operation": "modify",
-          "description": "Add a new section below existing dashboard content that displays upcoming reminders and active targets. Use existing useGetReminders and useGetTargets hooks from frontend/src/hooks/useQueries.ts to fetch data from localStorage. Filter to show only incomplete/future items. Display each item with its title, deadline/time, and status. Ensure the section updates reactively when the underlying data changes."
+          "description": "Add React Query hooks for chat operations: useGetMessages (with 1-second refetchInterval), useSendMessage mutation, and useMarkMessagesRead mutation. The useGetMessages hook must call the backend getMessages function and enable polling when the component is mounted. Verify the authorization component's usage instructions before implementing to ensure proper caller context handling."
+        },
+        {
+          "path": "frontend/src/pages/ParentDashboard.tsx",
+          "operation": "modify",
+          "description": "Replace the existing localStorage-based chat implementation with the new useGetMessages hook configured with a 1-second polling interval. The hook should be enabled only when the chat panel is visible. Remove all localStorage chat logic and wire in useSendMessage and useMarkMessagesRead mutations."
+        },
+        {
+          "path": "frontend/src/pages/StudentMessagesPage.tsx",
+          "operation": "modify",
+          "description": "Replace the existing localStorage-based chat implementation with the new useGetMessages hook configured with a 1-second polling interval. Remove all localStorage chat logic and wire in useSendMessage and useMarkMessagesRead mutations."
         }
       ]
     },
     {
       "id": "REQ-3",
-      "summary": "Add a calendar-clock icon button in the top-right area of the homepage header, positioned beside the existing message icon",
+      "summary": "Add online/offline presence tracking with backend state and frontend display",
       "acceptanceCriteria": [
-        "A calendar-clock icon is visible in the top-right header beside the message icon",
-        "Tapping the icon navigates to the Timer page",
-        "The icon is accessible on all screen sizes"
+        "A green indicator and 'Online' label appear when the other party has been active within 60 seconds.",
+        "A grey indicator and 'Last seen HH:MM' appear otherwise.",
+        "Presence updates are sent to the backend every 30 seconds while the chat is open."
       ],
       "file_operations": [
         {
-          "path": "frontend/src/pages/Dashboard.tsx",
+          "path": "frontend/src/hooks/useQueries.ts",
           "operation": "modify",
-          "description": "Add a calendar-clock icon button in the top-right header section of the Dashboard page, positioned next to the existing message navigation button. Use lucide-react icons (CalendarClock). Wire the button to navigate to the '/timer' route using TanStack Router's Link or useNavigate. Ensure the icon is responsive and accessible."
+          "description": "Add React Query hooks: useUpdatePresence mutation (calls backend updatePresence) and useGetPresence query (calls backend getPresence with a 5-second refetchInterval). Verify the authorization component's usage instructions before implementing to ensure proper authentication handling."
+        },
+        {
+          "path": "frontend/src/pages/ParentDashboard.tsx",
+          "operation": "modify",
+          "description": "Add presence tracking: call useUpdatePresence every 30 seconds using a useEffect with setInterval while the chat is open. Fetch the linked student's presence using useGetPresence and display a green dot with 'Online' if lastSeen is within 60 seconds, or a grey dot with 'Last seen HH:MM' otherwise in the chat header."
+        },
+        {
+          "path": "frontend/src/pages/StudentMessagesPage.tsx",
+          "operation": "modify",
+          "description": "Add presence tracking: call useUpdatePresence every 30 seconds using a useEffect with setInterval while the chat is open. Fetch the parent's presence using useGetPresence and display a green dot with 'Online' if lastSeen is within 60 seconds, or a grey dot with 'Last seen HH:MM' otherwise in the chat header."
         }
       ]
     },
     {
       "id": "REQ-4",
-      "summary": "Create a new Timer/Countdown page with add, display, and delete functionality for multiple timers",
+      "summary": "Add typing indicator with backend state and frontend display",
       "acceptanceCriteria": [
-        "User can open an 'Add Timer' form with start (month/day) and end (year/month/day) inputs",
-        "Saved timers display a large live countdown in months, days, hours, minutes",
-        "Multiple timers can be active simultaneously",
-        "Timers persist across page refreshes (localStorage)",
-        "Each timer can be deleted individually"
+        "Typing indicator appears within 1 second of the remote party starting to type.",
+        "Typing indicator disappears within 4 seconds after the remote party stops typing.",
+        "The animated ellipsis is visible and styled to match the chat bubble design."
       ],
       "file_operations": [
         {
-          "path": "frontend/src/pages/TimerPage.tsx",
-          "operation": "create",
-          "description": "Create a new Timer page component that allows users to add timers with start date (month, day) and end date (year, month, day) fields. Display all active timers with large, prominent countdown text showing months, days, hours, and minutes remaining. Implement real-time countdown updates using setInterval. Support multiple simultaneous timers displayed as a list. Include a delete button for each timer. Use localStorage to persist timer data (integrate with frontend/src/utils/localStorageService.ts)."
+          "path": "frontend/src/hooks/useQueries.ts",
+          "operation": "modify",
+          "description": "Add React Query hooks: useSetTyping mutation (calls backend setTyping) and useGetTypingStatus query (calls backend getTypingStatus with a 1-second refetchInterval). Verify the authorization component's usage instructions before implementing to ensure proper caller context."
         },
         {
-          "path": "frontend/src/App.tsx",
+          "path": "frontend/src/pages/ParentDashboard.tsx",
           "operation": "modify",
-          "description": "Register the new '/timer' route in the TanStack Router configuration. Import TimerPage and add it as a child route under the authenticated studentRoute. Ensure the route is protected by the student auth guard."
+          "description": "Add typing indicator logic: on input field onChange, call useSetTyping(true) and set a 3-second debounced timeout to call useSetTyping(false). Poll the student's typing status using useGetTypingStatus and display 'Student is typing...' with an animated ellipsis (three dots pulsing with CSS animation) below the message list when isTyping is true."
         },
         {
-          "path": "frontend/src/utils/localStorageService.ts",
+          "path": "frontend/src/pages/StudentMessagesPage.tsx",
           "operation": "modify",
-          "description": "Add timer data storage methods to localStorageService: addTimer, getTimers, deleteTimer. Define a Timer interface with fields for id, label, startDate (month, day), endDate (year, month, day), and createdAt. Store timers in the user-namespaced localStorage key pattern used by other entities."
+          "description": "Add typing indicator logic: on input field onChange, call useSetTyping(true) and set a 3-second debounced timeout to call useSetTyping(false). Poll the parent's typing status using useGetTypingStatus and display 'Parent is typing...' with an animated ellipsis (three dots pulsing with CSS animation) below the message list when isTyping is true."
         }
       ]
     },
     {
       "id": "REQ-5",
-      "summary": "Add a persistent bottom navigation bar visible on every page with five buttons: Home, Subject, Question, Reminder, and Target",
+      "summary": "Display formatted timestamps and date separators with auto-scroll",
       "acceptanceCriteria": [
-        "Bottom navigation bar is visible and fixed on every authenticated page",
-        "Five buttons: Home, Subject, Question, Reminder, Target — each with an icon and label",
-        "Each button navigates correctly to the respective page",
-        "Active page button is highlighted",
-        "The bar does not overlap main page content (page content has bottom padding)"
+        "Each message displays a timestamp formatted as HH:MM AM/PM.",
+        "Date separators appear between message groups of different calendar days.",
+        "The message container scrolls to the bottom automatically on new messages and on initial load."
       ],
       "file_operations": [
         {
-          "path": "frontend/src/components/BottomNavBar.tsx",
-          "operation": "create",
-          "description": "Create a BottomNavBar component with five navigation buttons: Home (to /), Subject (to /subjects), Question (to /question-bank), Reminder (to /reminders), and Target (to /targets). Each button includes an icon from lucide-react and a label. Use TanStack Router's Link component and useRouterState or useLocation to detect the active route and highlight the corresponding button. Style the bar to be fixed at the bottom of the viewport with appropriate z-index and background."
+          "path": "frontend/src/pages/ParentDashboard.tsx",
+          "operation": "modify",
+          "description": "Add timestamp formatting: convert each message's backend Time (bigint nanoseconds) to a JavaScript Date, then format as 'HH:MM AM/PM' and display beneath each chat bubble. Insert centered date separator components (e.g., 'Today', 'Yesterday', 'Dec 12') between message groups of different calendar days. Add a useEffect with a ref to scroll the message container to the bottom whenever the messages array changes or on initial load."
         },
         {
-          "path": "frontend/src/components/Layout.tsx",
+          "path": "frontend/src/pages/StudentMessagesPage.tsx",
           "operation": "modify",
-          "description": "Import and render the BottomNavBar component at the bottom of the Layout component, below the main content area. Add bottom padding to the main content wrapper (e.g., pb-20 or pb-24) to prevent content from being hidden behind the fixed bottom nav bar."
+          "description": "Add timestamp formatting: convert each message's backend Time (bigint nanoseconds) to a JavaScript Date, then format as 'HH:MM AM/PM' and display beneath each chat bubble. Insert centered date separator components (e.g., 'Today', 'Yesterday', 'Dec 12') between message groups of different calendar days. Add a useEffect with a ref to scroll the message container to the bottom whenever the messages array changes or on initial load."
         }
       ]
     },
     {
       "id": "REQ-6",
-      "summary": "Add a 'Target 🎯 100%' motivational widget on the homepage (Dashboard) with a bold winner aesthetic",
+      "summary": "Redesign chat UI with modern bubbles, avatars, and mobile-responsive layout",
       "acceptanceCriteria": [
-        "A Target 🎯 widget is visible on the homepage",
-        "It displays the user's current target completion percentage",
-        "The widget uses gold, trophy, or championship-themed colors and design",
-        "It includes a motivational message encouraging 100% completion",
-        "The widget updates when targets are completed"
+        "Outgoing bubbles are right-aligned with the app's primary colour.",
+        "Incoming bubbles are left-aligned with a contrasting neutral colour.",
+        "The chat input bar is always visible at the bottom of the chat pane on all screen sizes.",
+        "The UI renders correctly on 375px width (mobile) and 1280px width (desktop)."
       ],
       "file_operations": [
         {
-          "path": "frontend/src/components/TargetMotivationWidget.tsx",
-          "operation": "create",
-          "description": "Create a TargetMotivationWidget component that displays a motivational target completion widget. Calculate the completion percentage from the user's targets (completed / total). Use bold, champion-themed styling with gold/trophy colors (e.g., gradient backgrounds with yellows, oranges, and golds), large trophy or medal icons, and energetic typography. Include the 🎯 emoji and a motivational message encouraging the user to reach 100%. Make the design visually striking and celebratory."
+          "path": "frontend/src/pages/ParentDashboard.tsx",
+          "operation": "modify",
+          "description": "Redesign the chat UI: outgoing parent messages styled as right-aligned bubbles with a primary background color (from Tailwind config), incoming student messages as left-aligned bubbles with a neutral background. Add sender avatar initials in a circular badge beside each bubble. Ensure the message list uses flex-1 or min-h-0 to take available vertical space, and the input bar is pinned to the bottom using a fixed or sticky layout. Test responsiveness at 375px and 1280px widths."
         },
         {
-          "path": "frontend/src/pages/Dashboard.tsx",
+          "path": "frontend/src/pages/StudentMessagesPage.tsx",
           "operation": "modify",
-          "description": "Import and render the TargetMotivationWidget component prominently on the Dashboard page (e.g., near the top after the countdown banner or in a featured section). Ensure it receives target data via the useGetTargets hook and reactively updates when targets change."
+          "description": "Redesign the chat UI: outgoing student messages styled as right-aligned bubbles with a primary background color (from Tailwind config), incoming parent messages as left-aligned bubbles with a neutral background. Add sender avatar initials in a circular badge beside each bubble. Ensure the message list uses flex-1 or min-h-0 to take available vertical space, and the input bar is pinned to the bottom using a fixed or sticky layout. Test responsiveness at 375px and 1280px widths."
+        }
+      ]
+    },
+    {
+      "id": "REQ-7",
+      "summary": "Show in-app toast and browser push notifications for new messages",
+      "acceptanceCriteria": [
+        "A toast notification appears when a new message arrives and the chat panel is not active.",
+        "A browser push notification fires when the document.visibilityState is 'hidden' and the user has granted notification permission.",
+        "Clicking the notification navigates the user to the chat section."
+      ],
+      "file_operations": [
+        {
+          "path": "frontend/src/pages/ParentDashboard.tsx",
+          "operation": "modify",
+          "description": "Add notification logic: in the useGetMessages query's onSuccess callback, compare new messages with the previous messages array. If a new incoming message is detected and the chat panel is not in focus or visible, trigger a toast notification using the existing toast provider. If document.visibilityState is 'hidden' and Notification.permission is 'granted', send a browser push notification (via the existing service worker registration) with the sender's name and message preview. Ensure clicking the notification navigates to the chat section."
+        },
+        {
+          "path": "frontend/src/pages/StudentMessagesPage.tsx",
+          "operation": "modify",
+          "description": "Add notification logic: in the useGetMessages query's onSuccess callback, compare new messages with the previous messages array. If a new incoming message is detected and the page is not in focus or visible, trigger a toast notification using the existing toast provider. If document.visibilityState is 'hidden' and Notification.permission is 'granted', send a browser push notification (via the existing service worker registration) with the sender's name and message preview. Ensure clicking the notification navigates to the chat section."
+        }
+      ]
+    },
+    {
+      "id": "REQ-8",
+      "summary": "Add network error handling with retry logic and user feedback",
+      "acceptanceCriteria": [
+        "A 'Connection lost' banner appears when a backend call fails.",
+        "Failed message sends are retried up to 3 times automatically.",
+        "After 3 failures, a visible error state with a 'Retry' button is shown.",
+        "The banner dismisses automatically when connectivity is restored and a request succeeds."
+      ],
+      "file_operations": [
+        {
+          "path": "frontend/src/hooks/useQueries.ts",
+          "operation": "modify",
+          "description": "Configure React Query mutations (useSendMessage) with retry: 3 and exponential backoff (retryDelay: attemptIndex => Math.min(1000 * 2 ** attemptIndex, 30000)). Add onError handlers to capture network failures."
+        },
+        {
+          "path": "frontend/src/pages/ParentDashboard.tsx",
+          "operation": "modify",
+          "description": "Add network error handling: display a non-blocking banner ('Connection lost – retrying…') when useSendMessage or useGetMessages returns an error due to network issues. After 3 failed retries, show a persistent error state with a 'Retry' button that manually triggers the mutation again. Dismiss the banner automatically when a subsequent request succeeds."
+        },
+        {
+          "path": "frontend/src/pages/StudentMessagesPage.tsx",
+          "operation": "modify",
+          "description": "Add network error handling: display a non-blocking banner ('Connection lost – retrying…') when useSendMessage or useGetMessages returns an error due to network issues. After 3 failed retries, show a persistent error state with a 'Retry' button that manually triggers the mutation again. Dismiss the banner automatically when a subsequent request succeeds."
+        }
+      ]
+    },
+    {
+      "id": "REQ-9",
+      "summary": "Update unread message badge in Layout to reflect backend unread count",
+      "acceptanceCriteria": [
+        "The unread badge in the sidebar/nav reflects the backend unread count.",
+        "The badge clears when the user opens and views the chat."
+      ],
+      "file_operations": [
+        {
+          "path": "frontend/src/components/Layout.tsx",
+          "operation": "modify",
+          "description": "Replace the current localStorage-based unread message count logic with a call to useGetMessages (from useQueries.ts). Extract the unread count from the returned messages array (filter messages where isRead is false and senderId is not the current user). Display this count in the unread badge next to the Messages navigation link. The badge should automatically clear when the user navigates to the messages page and markMessagesRead is called. Verify the authorization component's usage instructions before implementing to ensure proper caller context."
         }
       ]
     }

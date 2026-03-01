@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, useNavigate, Link } from '@tanstack/react-router';
 import {
   BookOpen,
@@ -18,6 +18,7 @@ import {
   X,
   ClipboardList,
   Info,
+  WifiOff,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useQueryClient } from '@tanstack/react-query';
@@ -53,6 +54,26 @@ export default function Layout() {
   const queryClient = useQueryClient();
   const guest = isGuest();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  // Track online/offline status
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      toast.success('Back online!', { duration: 3000 });
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   const getCurrentUsername = (): string | null => {
     const userId = getCurrentUserId();
@@ -76,8 +97,29 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen bg-background flex">
+      {/* Offline banner — fixed at top, above everything */}
+      {!isOnline && (
+        <div
+          className="fixed top-0 left-0 right-0 z-[100] flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold"
+          style={{
+            background: 'oklch(0.38 0.13 200)',
+            color: '#fff',
+          }}
+          role="status"
+          aria-live="polite"
+        >
+          <WifiOff className="w-4 h-4 flex-shrink-0" />
+          <span>You are offline — Some features may be limited</span>
+        </div>
+      )}
+
       {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex flex-col w-64 border-r border-border bg-card fixed top-0 left-0 h-full z-40">
+      <aside
+        className={`hidden lg:flex flex-col w-64 border-r border-border bg-card fixed left-0 h-full z-40 ${
+          !isOnline ? 'top-10' : 'top-0'
+        }`}
+        style={{ height: !isOnline ? 'calc(100% - 40px)' : '100%' }}
+      >
         <div className="p-4 border-b border-border">
           <div className="flex items-center gap-2">
             <img
@@ -226,7 +268,10 @@ export default function Layout() {
       </aside>
 
       {/* Main content */}
-      <div className="flex-1 lg:ml-64 flex flex-col min-h-screen">
+      <div
+        className="flex-1 lg:ml-64 flex flex-col min-h-screen"
+        style={{ paddingTop: !isOnline ? '40px' : undefined }}
+      >
         {/* Mobile top bar */}
         <header className="lg:hidden sticky top-0 z-30 bg-background/95 backdrop-blur border-b border-border px-4 py-3 flex items-center justify-between">
           <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(true)}>

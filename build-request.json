@@ -1,135 +1,191 @@
 {
   "kind": "build_request",
-  "title": "Homepage enhancements, timer page, bottom nav bar, and motivational target widget",
+  "title": "Upgrade Parent Dashboard Live Chat with Real-Time Messaging Features",
   "projectName": "Board Saathi",
   "priority": "normal",
   "requirements": [
     {
       "id": "REQ-1",
-      "text": "Display a 'Days Left to End of Month' countdown banner at the very top of the homepage (Dashboard). Calculate the number of days remaining in the current calendar month and show it prominently (e.g., '12 days left in this month').",
-      "target": "frontend",
+      "text": "Replace the existing localStorage-based chat in ParentDashboard.tsx and StudentMessagesPage.tsx with a polling-free real-time chat system. Use the Internet Computer backend (Motoko) to store messages in stable state with a timestamp, senderId, senderRole (parent/student), messageText, and a read flag. Expose query and update functions: sendMessage, getMessages, and markMessagesRead.",
+      "target": "backend",
       "source": {
         "messageIds": [
-          "msg-1"
+          "msg-4"
         ],
         "quotes": [
-          "In the top of homepage the days left will be written to end month"
+          "Store all messages in a cloud database.",
+          "Messages should appear immediately for both sender and receiver."
         ]
       },
       "acceptanceCriteria": [
-        "The days-left count is shown at the top of the Dashboard page",
-        "The number updates correctly as the date changes",
-        "The banner is visually distinct and easy to read"
+        "Messages are persisted in stable Motoko state and survive canister upgrades.",
+        "sendMessage stores a new message with correct sender, role, text, and ISO timestamp.",
+        "getMessages returns all messages for a given parent–student pair in chronological order.",
+        "markMessagesRead marks all unread messages from the other party as read."
       ]
     },
     {
       "id": "REQ-2",
-      "text": "On the homepage (Dashboard), show a section that lists the user's upcoming reminders and active targets so they are immediately visible without navigating away. Pull data from existing localStorage reminders and targets. Show title, deadline/time, and a short status indicator for each item.",
+      "text": "Implement a React Query polling loop (1-second interval) in both ParentDashboard.tsx and StudentMessagesPage.tsx to simulate real-time message delivery by refetching getMessages frequently, giving the appearance of instant updates without a page refresh.",
       "target": "frontend",
       "source": {
         "messageIds": [
-          "msg-1"
+          "msg-4"
         ],
         "quotes": [
-          "If a student will add a target or reminder then that target or reminder will come to homepage so that user can easily remember"
+          "Use WebSockets or Firebase Realtime Database for instant messaging (no page refresh required).",
+          "Messages should appear immediately for both sender and receiver."
         ]
       },
       "acceptanceCriteria": [
-        "Reminders and targets added by the user appear on the homepage",
-        "Each item shows its title and due date/time",
-        "Section updates reactively when items are added or removed"
+        "New messages sent by one party appear on the other party's screen within 2 seconds without any manual page refresh.",
+        "Polling starts when the chat section is mounted and stops when it unmounts."
       ]
     },
     {
       "id": "REQ-3",
-      "text": "Add a calendar-clock icon button in the top-right area of the homepage header, positioned beside the existing message icon. Tapping this icon navigates the user to a new Timer/Countdown page.",
-      "target": "frontend",
+      "text": "Add online/offline presence tracking. Store a lastSeen timestamp and isOnline boolean per user in Motoko stable state. Expose updatePresence and getPresence functions. Call updatePresence on a regular interval (every 30 seconds) from the frontend. Display a green dot for online (seen within 60 seconds) and a grey dot with 'Last seen' time for offline users in the chat header.",
+      "target": "both",
       "source": {
         "messageIds": [
-          "msg-1"
+          "msg-4"
         ],
         "quotes": [
-          "Add a calendar clock icon in top right corner beside message icon . This icon will open a page"
+          "Show online/offline status of users."
         ]
       },
       "acceptanceCriteria": [
-        "A calendar-clock icon is visible in the top-right header beside the message icon",
-        "Tapping the icon navigates to the Timer page",
-        "The icon is accessible on all screen sizes"
+        "A green indicator and 'Online' label appear when the other party has been active within 60 seconds.",
+        "A grey indicator and 'Last seen HH:MM' appear otherwise.",
+        "Presence updates are sent to the backend every 30 seconds while the chat is open."
       ]
     },
     {
       "id": "REQ-4",
-      "text": "Create a new Timer/Countdown page reachable from the calendar-clock icon. The page must: (1) Allow adding a new timer with a 'Start' date field (month + day) and an 'End' date field (year + month + day). (2) After saving, display a live countdown showing months, days, hours, and minutes remaining until the End date in large, prominent text. (3) Support multiple simultaneous timers listed on the page. (4) Each timer entry shows its label/end-date and live countdown. (5) Provide a delete option for each timer.",
-      "target": "frontend",
+      "text": "Add a typing indicator. Store a isTyping boolean and typingUserId in component state. When the local user types in the input field, broadcast a setTyping(true) flag via a Motoko update call and clear it after 3 seconds of inactivity. Poll getTypingStatus on a 1-second interval and display 'User is typing...' with an animated ellipsis below the message list when the remote party is typing.",
+      "target": "both",
       "source": {
         "messageIds": [
-          "msg-1"
+          "msg-4"
         ],
         "quotes": [
-          "there will be two sections to fill one when to start(in months and days ) and when to end (in years months days) after saving it a timer will start which show month day date hrs min left",
-          "the timer will be in big size showing left months days hrs min etc",
-          "there will be option of multiple timer set"
+          "Add typing indicator (\"User is typing...\")."
         ]
       },
       "acceptanceCriteria": [
-        "User can open an 'Add Timer' form with start (month/day) and end (year/month/day) inputs",
-        "Saved timers display a large live countdown in months, days, hours, minutes",
-        "Multiple timers can be active simultaneously",
-        "Timers persist across page refreshes (localStorage)",
-        "Each timer can be deleted individually"
+        "Typing indicator appears within 1 second of the remote party starting to type.",
+        "Typing indicator disappears within 4 seconds after the remote party stops typing.",
+        "The animated ellipsis is visible and styled to match the chat bubble design."
       ]
     },
     {
       "id": "REQ-5",
-      "text": "Add a persistent bottom navigation bar that is visible on every page of the app. The bar must contain five buttons with icons and labels: Home, Subject, Question, Reminder, and Target. Each button navigates to its corresponding page. The bar must remain fixed at the bottom of the screen and not be hidden by page content.",
+      "text": "Display a formatted timestamp (e.g., '10:32 AM') beneath each chat bubble. Group messages by date with a centered date separator (e.g., 'Today', 'Yesterday', 'Dec 12'). Auto-scroll the message list to the latest message whenever new messages arrive or a message is sent.",
       "target": "frontend",
       "source": {
         "messageIds": [
-          "msg-1"
+          "msg-4"
         ],
         "quotes": [
-          "Add subject, question, reminder,target and home button to bottom of the screen which always be there in every page to easily access these buttons for the user"
+          "Show message timestamp.",
+          "Auto-scroll to latest message."
         ]
       },
       "acceptanceCriteria": [
-        "Bottom navigation bar is visible and fixed on every authenticated page",
-        "Five buttons: Home, Subject, Question, Reminder, Target — each with an icon and label",
-        "Each button navigates correctly to the respective page",
-        "Active page button is highlighted",
-        "The bar does not overlap main page content (page content has bottom padding)"
+        "Each message displays a timestamp formatted as HH:MM AM/PM.",
+        "Date separators appear between message groups of different calendar days.",
+        "The message container scrolls to the bottom automatically on new messages and on initial load."
       ]
     },
     {
       "id": "REQ-6",
-      "text": "Add a 'Target 🎯 100%' motivational widget on the homepage (Dashboard). Style it with a bold, winner/champion aesthetic — use gold/trophy colors, celebratory typography, and an energetic design to keep students motivated. Show the user's current overall target completion percentage and a message encouraging them to reach 100%.",
+      "text": "Redesign the chat UI in ParentDashboard.tsx and StudentMessagesPage.tsx with modern chat bubbles: outgoing messages aligned right with a primary colour background, incoming messages aligned left with a neutral background, rounded corners, sender avatar initials, and a clean input bar with a send button. Ensure the layout is fully mobile responsive with the message list taking available vertical space and the input bar pinned to the bottom.",
       "target": "frontend",
       "source": {
         "messageIds": [
-          "msg-1"
+          "msg-4"
         ],
         "quotes": [
-          "Add Target 🎯 100 percent widget in home screen with attractive and winner look so that students will always be motivated"
+          "Use modern UI with clean chat bubbles.",
+          "Make it mobile responsive and optimized for PWA."
         ]
       },
       "acceptanceCriteria": [
-        "A Target 🎯 widget is visible on the homepage",
-        "It displays the user's current target completion percentage",
-        "The widget uses gold, trophy, or championship-themed colors and design",
-        "It includes a motivational message encouraging 100% completion",
-        "The widget updates when targets are completed"
+        "Outgoing bubbles are right-aligned with the app's primary colour.",
+        "Incoming bubbles are left-aligned with a contrasting neutral colour.",
+        "The chat input bar is always visible at the bottom of the chat pane on all screen sizes.",
+        "The UI renders correctly on 375px width (mobile) and 1280px width (desktop)."
+      ]
+    },
+    {
+      "id": "REQ-7",
+      "text": "Show an in-app notification toast (using the existing toast provider) when a new message arrives while the user is on a different page or the chat panel is not in focus. Use the existing browser Notification API (already configured in the service worker) to send a push notification with the sender's name and message preview when the document is hidden.",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-4"
+        ],
+        "quotes": [
+          "Add push notifications when a new message arrives."
+        ]
+      },
+      "acceptanceCriteria": [
+        "A toast notification appears when a new message arrives and the chat panel is not active.",
+        "A browser push notification fires when the document.visibilityState is 'hidden' and the user has granted notification permission.",
+        "Clicking the notification navigates the user to the chat section."
+      ]
+    },
+    {
+      "id": "REQ-8",
+      "text": "Add basic network error handling in the chat components. Show a non-blocking banner ('Connection lost – retrying…') when backend calls fail due to network issues. Automatically retry failed message sends up to 3 times with exponential backoff. Display a persistent error state if all retries fail, with a manual 'Retry' button.",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-4"
+        ],
+        "quotes": [
+          "Add basic error handling for network disconnection."
+        ]
+      },
+      "acceptanceCriteria": [
+        "A 'Connection lost' banner appears when a backend call fails.",
+        "Failed message sends are retried up to 3 times automatically.",
+        "After 3 failures, a visible error state with a 'Retry' button is shown.",
+        "The banner dismisses automatically when connectivity is restored and a request succeeds."
+      ]
+    },
+    {
+      "id": "REQ-9",
+      "text": "Update the unread message badge in Layout.tsx to reflect the real unread message count fetched from the Motoko backend via the getMessages and markMessagesRead functions, replacing the current localStorage-based unread count logic.",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-4"
+        ],
+        "quotes": [
+          "Messages should appear immediately for both sender and receiver."
+        ]
+      },
+      "acceptanceCriteria": [
+        "The unread badge in the sidebar/nav reflects the backend unread count.",
+        "The badge clears when the user opens and views the chat."
       ]
     }
   ],
   "constraints": [
-    "Do not modify files under frontend/src/hooks/useInternetIdentity.ts, frontend/src/hooks/useActor.ts, frontend/src/main.tsx, or frontend/src/components/ui",
-    "All data persistence must use the existing localStorage service (localStorageService.ts)",
-    "Timer page and bottom nav must integrate with the existing TanStack Router route structure in App.tsx"
+    "Do not use Firebase, WebSockets, or any external real-time database — use the Internet Computer Motoko backend for all data persistence.",
+    "Do not edit any files under frontend/src/hooks/useInternetIdentity.ts, frontend/src/hooks/useActor.ts, frontend/src/main.tsx, or frontend/src/components/ui.",
+    "All Motoko logic must remain in the single actor in backend/main.mo.",
+    "Real-time behaviour must be achieved via React Query polling, not native WebSockets or third-party services."
   ],
   "nonGoals": [
-    "Backend changes — all new features are frontend/localStorage only",
-    "Real-time sync or push notifications for timers",
-    "Redesigning existing pages beyond adding the bottom nav bar and homepage sections"
+    "Firebase Authentication, Firebase Realtime Database, or Firestore integration.",
+    "Native WebSocket connections.",
+    "Group chat or multi-party messaging.",
+    "Message deletion or editing.",
+    "File or image attachments in chat.",
+    "End-to-end encryption.",
+    "PWA manifest or service worker changes beyond triggering browser notifications."
   ],
   "imageRequirements": {
     "required": [],

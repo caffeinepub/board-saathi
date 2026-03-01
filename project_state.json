@@ -1,104 +1,134 @@
 {
   "schemaVersion": "1.0.0",
   "projectStateVersion": 3,
-  "summary": "Student productivity app with homepage showing days left to end of month, targets/reminders displayed on homepage, calendar/timer features, bottom navigation bar, and motivational target widget.",
+  "summary": "A school management web app with student and parent registration/linking flow and a parent dashboard featuring a real-time live chat system built with Firebase.",
   "architectural_notes": [
-    "Bottom navigation bar (Subject, Question, Reminder, Target, Home) must persist across all pages"
+    "Use Firebase Authentication for user identity in chat",
+    "Use Firebase Realtime Database or Firestore with real-time listeners for chat messages",
+    "Apply secure Firebase rules to protect chat data",
+    "Add basic error handling for network disconnection in chat"
   ],
-  "known_issues": [
-    "Build has failed multiple times due to AI/server errors; retrying"
-  ],
+  "known_issues": [],
   "isFixRequest": false,
-  "existing_features": [
-    {
-      "id": "feature-display-a-days-left-to-end-of-month-countdown-banner-at-the-very-top-of-the-homepage-dashboard-calculate-the-number-of-days-remaining-in-the-current-calendar-month-and-show-it-prominently-e-g-12-days-left-in-this-month",
-      "title": "Display a 'Days Left to End of Month' countdown banner at the very top of the homepage (Dashboard). Calculate the number of days remaining in the current calendar month and show it prominently (e.g., '12 days left in this month').",
-      "reqIds": [
-        "REQ-1"
-      ],
-      "version": 1
-    },
-    {
-      "id": "feature-on-the-homepage-dashboard-show-a-section-that-lists-the-user-s-upcoming-reminders-and-active-targets-so-they-are-immediately-visible-without-navigating-away-pull-data-from-existing-localstorage-reminders-and-targets-show-title-deadline-time-and-a-short-status-indicator-for-each-item",
-      "title": "On the homepage (Dashboard), show a section that lists the user's upcoming reminders and active targets so they are immediately visible without navigating away. Pull data from existing localStorage reminders and targets. Show title, deadline/time, and a short status indicator for each item.",
-      "reqIds": [
-        "REQ-2"
-      ],
-      "version": 1
-    },
-    {
-      "id": "feature-add-a-calendar-clock-icon-button-in-the-top-right-area-of-the-homepage-header-positioned-beside-the-existing-message-icon-tapping-this-icon-navigates-the-user-to-a-new-timer-countdown-page",
-      "title": "Add a calendar-clock icon button in the top-right area of the homepage header, positioned beside the existing message icon. Tapping this icon navigates the user to a new Timer/Countdown page.",
-      "reqIds": [
-        "REQ-3"
-      ],
-      "version": 1
-    },
-    {
-      "id": "feature-create-a-new-timer-countdown-page-reachable-from-the-calendar-clock-icon-the-page-must-1-allow-adding-a-new-timer-with-a-start-date-field-month-day-and-an-end-date-field-year-month-day-2-after-saving-display-a-live-countdown-showing-months-days-hours-and-minutes-remaining-until-the-end-date-in-large-prominent-text-3-support-multiple-simultaneous-timers-listed-on-the-page-4-each-timer-entry-shows-its-label-end-date-and-live-countdown-5-provide-a-delete-option-for-each-timer",
-      "title": "Create a new Timer/Countdown page reachable from the calendar-clock icon. The page must: (1) Allow adding a new timer with a 'Start' date field (month + day) and an 'End' date field (year + month + day). (2) After saving, display a live countdown showing months, days, hours, and minutes remaining until the End date in large, prominent text. (3) Support multiple simultaneous timers listed on the page. (4) Each timer entry shows its label/end-date and live countdown. (5) Provide a delete option for each timer.",
-      "reqIds": [
-        "REQ-4"
-      ],
-      "version": 1
-    },
-    {
-      "id": "feature-add-a-persistent-bottom-navigation-bar-that-is-visible-on-every-page-of-the-app-the-bar-must-contain-five-buttons-with-icons-and-labels-home-subject-question-reminder-and-target-each-button-navigates-to-its-corresponding-page-the-bar-must-remain-fixed-at-the-bottom-of-the-screen-and-not-be-hidden-by-page-content",
-      "title": "Add a persistent bottom navigation bar that is visible on every page of the app. The bar must contain five buttons with icons and labels: Home, Subject, Question, Reminder, and Target. Each button navigates to its corresponding page. The bar must remain fixed at the bottom of the screen and not be hidden by page content.",
-      "reqIds": [
-        "REQ-5"
-      ],
-      "version": 1
-    },
-    {
-      "id": "feature-add-a-target-100-motivational-widget-on-the-homepage-dashboard-style-it-with-a-bold-winner-champion-aesthetic-use-gold-trophy-colors-celebratory-typography-and-an-energetic-design-to-keep-students-motivated-show-the-user-s-current-overall-target-completion-percentage-and-a-message-encouraging-them-to-reach-100",
-      "title": "Add a 'Target 🎯 100%' motivational widget on the homepage (Dashboard). Style it with a bold, winner/champion aesthetic — use gold/trophy colors, celebratory typography, and an energetic design to keep students motivated. Show the user's current overall target completion percentage and a message encouraging them to reach 100%.",
-      "reqIds": [
-        "REQ-6"
-      ],
-      "version": 1
-    }
-  ],
+  "existing_features": [],
   "new_feature_requests": [
     {
       "id": "AR-1",
-      "summary": "Show days left to end of month at top of homepage",
+      "summary": "Parent dashboard: real-time live chat using Firebase Realtime Database/Firestore with WebSocket-like instant messaging (no page refresh)",
       "reqIds": [],
       "status": "pending"
     },
     {
       "id": "AR-2",
-      "summary": "Display added targets and reminders on homepage for easy visibility",
+      "summary": "Live chat: show online/offline status of users",
       "reqIds": [],
       "status": "pending"
     },
     {
       "id": "AR-3",
-      "summary": "Add calendar clock icon in top right corner (beside message icon) that opens a timer/countdown page",
+      "summary": "Live chat: typing indicator ('User is typing...')",
       "reqIds": [],
       "status": "pending"
     },
     {
       "id": "AR-4",
-      "summary": "Timer page: add timer with start (month/day) and end (year/month/day) fields, shows countdown in large format (months/days/hrs/min), supports multiple timers",
+      "summary": "Live chat: show message timestamps and auto-scroll to latest message",
       "reqIds": [],
       "status": "pending"
     },
     {
       "id": "AR-5",
-      "summary": "Persistent bottom navigation bar with Subject, Question, Reminder, Target, and Home buttons visible on every page",
+      "summary": "Live chat: store all messages in cloud database (Firestore/Firebase Realtime DB)",
       "reqIds": [],
       "status": "pending"
     },
     {
       "id": "AR-6",
-      "summary": "Add motivational 'Target 🎯 100%' widget on home screen with attractive winner-style design",
+      "summary": "Live chat: push notifications when a new message arrives",
       "reqIds": [],
+      "status": "pending"
+    },
+    {
+      "id": "AR-7",
+      "summary": "Live chat: mobile responsive UI with clean chat bubbles, optimized for PWA",
+      "reqIds": [],
+      "status": "pending"
+    },
+    {
+      "id": "AR-8",
+      "summary": "Replace the existing localStorage-based chat in ParentDashboard.tsx and StudentMessagesPage.tsx with a polling-free real-time chat system. Use the Internet Computer backend (Motoko) to store messages in stable state with a timestamp, senderId, senderRole (parent/student), messageText, and a read flag. Expose query and update functions: sendMessage, getMessages, and markMessagesRead.",
+      "reqIds": [
+        "REQ-1"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-9",
+      "summary": "Implement a React Query polling loop (1-second interval) in both ParentDashboard.tsx and StudentMessagesPage.tsx to simulate real-time message delivery by refetching getMessages frequently, giving the appearance of instant updates without a page refresh.",
+      "reqIds": [
+        "REQ-2"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-10",
+      "summary": "Add online/offline presence tracking. Store a lastSeen timestamp and isOnline boolean per user in Motoko stable state. Expose updatePresence and getPresence functions. Call updatePresence on a regular interval (every 30 seconds) from the frontend. Display a green dot for online (seen within 60 seconds) and a grey dot with 'Last seen' time for offline users in the chat header.",
+      "reqIds": [
+        "REQ-3"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-11",
+      "summary": "Add a typing indicator. Store a isTyping boolean and typingUserId in component state. When the local user types in the input field, broadcast a setTyping(true) flag via a Motoko update call and clear it after 3 seconds of inactivity. Poll getTypingStatus on a 1-second interval and display 'User is typing...' with an animated ellipsis below the message list when the remote party is typing.",
+      "reqIds": [
+        "REQ-4"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-12",
+      "summary": "Display a formatted timestamp (e.g., '10:32 AM') beneath each chat bubble. Group messages by date with a centered date separator (e.g., 'Today', 'Yesterday', 'Dec 12'). Auto-scroll the message list to the latest message whenever new messages arrive or a message is sent.",
+      "reqIds": [
+        "REQ-5"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-13",
+      "summary": "Redesign the chat UI in ParentDashboard.tsx and StudentMessagesPage.tsx with modern chat bubbles: outgoing messages aligned right with a primary colour background, incoming messages aligned left with a neutral background, rounded corners, sender avatar initials, and a clean input bar with a send button. Ensure the layout is fully mobile responsive with the message list taking available vertical space and the input bar pinned to the bottom.",
+      "reqIds": [
+        "REQ-6"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-14",
+      "summary": "Show an in-app notification toast (using the existing toast provider) when a new message arrives while the user is on a different page or the chat panel is not in focus. Use the existing browser Notification API (already configured in the service worker) to send a push notification with the sender's name and message preview when the document is hidden.",
+      "reqIds": [
+        "REQ-7"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-15",
+      "summary": "Add basic network error handling in the chat components. Show a non-blocking banner ('Connection lost – retrying…') when backend calls fail due to network issues. Automatically retry failed message sends up to 3 times with exponential backoff. Display a persistent error state if all retries fail, with a manual 'Retry' button.",
+      "reqIds": [
+        "REQ-8"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-16",
+      "summary": "Update the unread message badge in Layout.tsx to reflect the real unread message count fetched from the Motoko backend via the getMessages and markMessagesRead functions, replacing the current localStorage-based unread count logic.",
+      "reqIds": [
+        "REQ-9"
+      ],
       "status": "pending"
     }
   ],
   "gameProjectType": "none",
-  "projectName": "Student Productivity App",
+  "projectName": "Board Saathi",
   "clarification_mode": "instant",
   "clarification_rounds": 0
 }

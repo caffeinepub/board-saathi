@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
-import { Eye, EyeOff, User, Lock, School, GraduationCap, UserPlus, LogIn, Users, ShieldCheck } from 'lucide-react';
+import { Eye, EyeOff, User, Lock, School, GraduationCap, UserPlus, LogIn, Users, ShieldCheck, Globe } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,12 +21,16 @@ import {
   createParentAccount,
   parentLogin,
   setParentSession,
+  getParentAccount,
+  ParentSession,
 } from '../utils/localStorageService';
+import { useActor } from '../hooks/useActor';
 
 type Mode = 'login' | 'register';
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const { actor } = useActor();
   const [mode, setMode] = useState<Mode>('login');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -67,6 +71,7 @@ export default function LoginPage() {
   const [showParentRegPassword, setShowParentRegPassword] = useState(false);
   const [parentRegLoading, setParentRegLoading] = useState(false);
 
+  // ─── Student Login ────────────────────────────────────────────────────────
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!loginUsername.trim() || !loginPassword.trim()) {
@@ -75,20 +80,23 @@ export default function LoginPage() {
     }
     setLoading(true);
     try {
+      // Always validate against localStorage first (primary source for this device)
       const account = validateCredentials(loginUsername.trim(), loginPassword);
-      if (!account) {
-        toast.error('Invalid username or password');
+      if (account) {
+        setCurrentUserId(account.userId);
+        initializeUserData(account.userId);
+        toast.success(`Welcome back, ${account.name}!`);
+        navigate({ to: '/' });
         return;
       }
-      setCurrentUserId(account.userId);
-      initializeUserData(account.userId);
-      toast.success(`Welcome back, ${account.name}!`);
-      navigate({ to: '/' });
+      // If not found locally, show error
+      toast.error('Invalid username or password. If you registered on another device, please register again on this device.');
     } finally {
       setLoading(false);
     }
   };
 
+  // ─── Student Registration ─────────────────────────────────────────────────
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!regUsername.trim() || !regPassword.trim() || !regName.trim() || !regSchool.trim()) {
@@ -105,14 +113,42 @@ export default function LoginPage() {
     }
     setLoading(true);
     try {
+      const hashedPassword = simpleHash(regPassword);
+      const studentClass = parseInt(regClass, 10) || 10;
+
+      // Try to register on the global backend server first
+      if (actor) {
+        try {
+          await actor.registerStudent(
+            regUsername.trim(),
+            regName.trim(),
+            regSchool.trim(),
+            BigInt(studentClass),
+            hashedPassword
+          );
+          toast.success('Account saved to global server ✓');
+        } catch (backendErr: unknown) {
+          const errMsg = backendErr instanceof Error ? backendErr.message : String(backendErr);
+          if (errMsg.includes('Username already taken')) {
+            toast.error('This username is already taken on the global server. Please choose another.');
+            return;
+          }
+          // Non-fatal: backend unavailable, continue with local-only
+          toast.warning('Could not reach global server. Account saved locally only — parents on other devices may not find it.');
+        }
+      } else {
+        toast.warning('Server not available. Account saved locally only — parents on other devices may not find it.');
+      }
+
+      // Save locally regardless (for offline use)
       const userId = generateUserId();
       const account: StoredUserAccount = {
         userId,
         username: regUsername.trim(),
-        passwordHash: simpleHash(regPassword),
+        passwordHash: hashedPassword,
         name: regName.trim(),
         school: regSchool.trim(),
-        studentClass: parseInt(regClass, 10) || 10,
+        studentClass,
         createdAt: Date.now(),
       };
       saveUserAccount(account);
@@ -160,26 +196,61 @@ export default function LoginPage() {
     }
   };
 
+  // ─── Parent Login ─────────────────────────────────────────────────────────
   const handleParentLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!parentLoginUsername.trim() || !parentLoginPassword.trim()) {
-      toast.error("Please enter your username and your child's password");
+      toast.error("Please enter your username and password");
       return;
     }
     setParentLoginLoading(true);
     try {
-      const session = parentLogin(parentLoginUsername.trim(), parentLoginPassword);
-      setParentSession(session);
-      toast.success(`Welcome! Viewing ${session.childUsername}'s progress.`);
-      setParentLoginOpen(false);
-      navigate({ to: '/parent-dashboard' });
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Login failed');
+      const hashedPassword = simpleHash(parentLoginPassword);
+
+      // Try backend first
+      if (actor) {
+        try {
+          const backendParent = await actor.getParentByUsername(parentLoginUsername.trim());
+          if (backendParent) {
+            if (backendParent.password.hash !== hashedPassword) {
+              toast.error('Incorrect password.');
+              return;
+            }
+            // Backend login success — build session
+            const session: ParentSession = {
+              parentUsername: backendParent.username,
+              childUsername: backendParent.linkedStudentUsername,
+              parentName: backendParent.name,
+            };
+            setParentSession(session);
+            toast.success(`Welcome! Viewing ${session.childUsername}'s progress.`);
+            setParentLoginOpen(false);
+            navigate({ to: '/parent-dashboard' });
+            return;
+          }
+          // Not found on backend — fall through to localStorage
+        } catch {
+          // Backend unreachable — fall through to localStorage
+          toast.warning('Server unreachable. Trying local account...');
+        }
+      }
+
+      // Fallback: localStorage
+      try {
+        const session = parentLogin(parentLoginUsername.trim(), parentLoginPassword);
+        setParentSession(session);
+        toast.success(`Welcome! Viewing ${session.childUsername}'s progress. (Offline mode)`);
+        setParentLoginOpen(false);
+        navigate({ to: '/parent-dashboard' });
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : 'Login failed. Account not found.');
+      }
     } finally {
       setParentLoginLoading(false);
     }
   };
 
+  // ─── Parent Registration ──────────────────────────────────────────────────
   const handleParentRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!parentRegUsername.trim() || !parentRegChildUsername.trim() || !parentRegChildPassword.trim()) {
@@ -188,17 +259,87 @@ export default function LoginPage() {
     }
     setParentRegLoading(true);
     try {
-      createParentAccount(
-        parentRegUsername.trim(),
-        parentRegChildUsername.trim(),
-        parentRegChildPassword
-      );
+      const childUsername = parentRegChildUsername.trim();
+      const parentUsername = parentRegUsername.trim();
+      const parentName = parentRegName.trim() || parentUsername;
+      const hashedChildPassword = simpleHash(parentRegChildPassword);
+      const hashedParentPassword = hashedChildPassword; // parent uses child's password as their own
+
+      let studentVerified = false;
+
+      // Step 1: Verify student exists on global backend
+      if (actor) {
+        try {
+          // We use registerParent which will store on backend
+          // First verify the student exists locally or on backend
+          // Check locally first
+          const { getUserAccount } = await import('../utils/localStorageService');
+          const localStudent = getUserAccount(childUsername);
+
+          if (localStudent) {
+            // Verify password matches
+            if (localStudent.passwordHash !== hashedChildPassword) {
+              toast.error("Student's password is incorrect. Please ask your child for their correct password.");
+              return;
+            }
+            studentVerified = true;
+          } else {
+            // Student not found locally — they may have registered on another device
+            // We can't verify password without getStudentByUsername backend method
+            // Inform the user
+            toast.error(
+              `No student account found with username "${childUsername}" on this device. ` +
+              `Ask your child to log in on this device first, or make sure they registered with this exact username.`
+            );
+            return;
+          }
+
+          if (studentVerified) {
+            // Register parent on backend
+            try {
+              await actor.registerParent(
+                parentUsername,
+                parentName,
+                childUsername,
+                hashedParentPassword
+              );
+              toast.success('Parent account saved to global server ✓');
+            } catch (backendErr: unknown) {
+              const errMsg = backendErr instanceof Error ? backendErr.message : String(backendErr);
+              if (errMsg.includes('Username already taken')) {
+                toast.error('This parent username is already taken. Please choose another.');
+                return;
+              }
+              // Non-fatal backend error
+              toast.warning('Could not save to global server. Account saved locally only.');
+            }
+          }
+        } catch {
+          // Backend unreachable
+          toast.warning('Server not available. Proceeding with local registration only.');
+        }
+      }
+
+      // Step 2: Save locally (always)
+      try {
+        createParentAccount(
+          parentUsername,
+          childUsername,
+          parentRegChildPassword
+        );
+      } catch (localErr: unknown) {
+        const errMsg = localErr instanceof Error ? localErr.message : String(localErr);
+        // If already exists locally, that's fine if backend succeeded
+        if (!errMsg.includes('already taken')) {
+          toast.error(errMsg);
+          return;
+        }
+      }
+
       toast.success('Parent account created! You can now log in.');
       setParentRegisterOpen(false);
-      setParentLoginUsername(parentRegUsername.trim());
+      setParentLoginUsername(parentUsername);
       setParentLoginOpen(true);
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create account');
     } finally {
       setParentRegLoading(false);
     }
@@ -222,6 +363,12 @@ export default function LoginPage() {
           </div>
           <h1 className="text-3xl font-bold text-foreground">Board Saathi</h1>
           <p className="text-muted-foreground mt-1">Your CBSE Class 10 Companion</p>
+          {actor && (
+            <div className="flex items-center justify-center gap-1 mt-1 text-xs text-emerald-600">
+              <Globe className="w-3 h-3" />
+              <span>Connected to global server</span>
+            </div>
+          )}
         </div>
 
         <Card className="shadow-xl border-border/50">
@@ -309,6 +456,12 @@ export default function LoginPage() {
               </form>
             ) : (
               <form onSubmit={handleRegister} className="space-y-3">
+                {actor && (
+                  <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs">
+                    <Globe className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span>Your account will be saved to the global server so parents can find you from any device.</span>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label htmlFor="reg-name">Full Name</Label>
                   <div className="relative">
@@ -454,76 +607,80 @@ export default function LoginPage() {
             className="text-primary hover:underline"
           >
             caffeine.ai
-          </a>
+          </a>{' '}
+          · © {new Date().getFullYear()}
         </p>
       </div>
 
       {/* Forgot Password Dialog */}
-      <Dialog open={forgotOpen} onOpenChange={open => { setForgotOpen(open); if (!open) { setForgotSchool(''); setForgotResults([]); setForgotSearched(false); setResetUsername(''); setResetNewPassword(''); setResetDone(false); } }}>
+      <Dialog open={forgotOpen} onOpenChange={setForgotOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Reset Password</DialogTitle>
-            <DialogDescription>Find your account by school name, then reset your password.</DialogDescription>
+            <DialogTitle>Forgot Password</DialogTitle>
+            <DialogDescription>Find your account by school name</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            {!resetDone ? (
-              <>
+          {!resetDone ? (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>School Name</Label>
+                <Input
+                  placeholder="Enter your school name"
+                  value={forgotSchool}
+                  onChange={e => setForgotSchool(e.target.value)}
+                />
+              </div>
+              <Button className="w-full" onClick={handleForgotSearch}>
+                Search Accounts
+              </Button>
+              {forgotSearched && (
                 <div className="space-y-2">
-                  <Label>School Name</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Enter your school name"
-                      value={forgotSchool}
-                      onChange={e => setForgotSchool(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && handleForgotSearch()}
-                    />
-                    <Button onClick={handleForgotSearch} size="sm">Search</Button>
-                  </div>
-                </div>
-                {forgotSearched && (
-                  forgotResults.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No accounts found for this school.</p>
+                  {forgotResults.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center">No accounts found for this school.</p>
                   ) : (
-                    <div className="space-y-2">
-                      <Label>Select Account</Label>
+                    <>
+                      <Label>Select your account</Label>
                       <div className="space-y-1 max-h-40 overflow-y-auto">
                         {forgotResults.map(acc => (
                           <button
-                            key={acc.userId}
+                            key={acc.username}
                             onClick={() => setResetUsername(acc.username)}
                             className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
                               resetUsername === acc.username
                                 ? 'bg-primary text-primary-foreground'
-                                : 'hover:bg-muted'
+                                : 'bg-muted hover:bg-muted/80'
                             }`}
                           >
                             {acc.name} (@{acc.username})
                           </button>
                         ))}
                       </div>
-                    </div>
-                  )
-                )}
-                {resetUsername && (
-                  <div className="space-y-2">
-                    <Label>New Password</Label>
-                    <Input
-                      type="password"
-                      placeholder="Min. 4 characters"
-                      value={resetNewPassword}
-                      onChange={e => setResetNewPassword(e.target.value)}
-                    />
-                    <Button onClick={handlePasswordReset} className="w-full">Reset Password</Button>
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="text-center py-4">
-                <p className="text-green-600 font-medium">Password reset successfully!</p>
-                <Button className="mt-3" onClick={() => setForgotOpen(false)}>Close</Button>
-              </div>
-            )}
-          </div>
+                      {resetUsername && (
+                        <div className="space-y-2 pt-2">
+                          <Label>New Password</Label>
+                          <Input
+                            type="password"
+                            placeholder="Min. 4 characters"
+                            value={resetNewPassword}
+                            onChange={e => setResetNewPassword(e.target.value)}
+                          />
+                          <Button className="w-full" onClick={handlePasswordReset}>
+                            Reset Password
+                          </Button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-center space-y-3 py-4">
+              <p className="text-emerald-600 font-medium">Password reset successfully!</p>
+              <Button onClick={() => { setForgotOpen(false); setResetDone(false); setForgotSchool(''); setForgotResults([]); setForgotSearched(false); setResetUsername(''); setResetNewPassword(''); }}>
+                Back to Login
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -536,14 +693,14 @@ export default function LoginPage() {
               Parent Login
             </DialogTitle>
             <DialogDescription>
-              Enter your parent username and your child&apos;s password to access the parent dashboard.
+              Log in with your parent account credentials
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleParentLogin} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="parent-login-username">Parent Username</Label>
+              <Label htmlFor="parent-login-username">Your Parent Username</Label>
               <div className="relative">
-                <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   id="parent-login-username"
                   placeholder="Your parent username"
@@ -555,16 +712,17 @@ export default function LoginPage() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="parent-login-password">Child&apos;s Password</Label>
+              <Label htmlFor="parent-login-password">Password</Label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   id="parent-login-password"
                   type={showParentLoginPassword ? 'text' : 'password'}
-                  placeholder="Your child's password"
+                  placeholder="Your password"
                   value={parentLoginPassword}
                   onChange={e => setParentLoginPassword(e.target.value)}
                   className="pl-9 pr-10"
+                  autoComplete="current-password"
                 />
                 <button
                   type="button"
@@ -575,7 +733,7 @@ export default function LoginPage() {
                 </button>
               </div>
             </div>
-            <Button type="submit" className="w-full" disabled={parentLoginLoading}>
+            <Button type="submit" className="w-full bg-amber-600 hover:bg-amber-700 text-white" disabled={parentLoginLoading}>
               {parentLoginLoading ? (
                 <span className="flex items-center gap-2">
                   <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -585,14 +743,14 @@ export default function LoginPage() {
                 <span className="flex items-center gap-2"><LogIn className="w-4 h-4" />Login as Parent</span>
               )}
             </Button>
-            <p className="text-xs text-center text-muted-foreground">
-              Don&apos;t have a parent account?{' '}
+            <p className="text-xs text-muted-foreground text-center">
+              Don't have an account?{' '}
               <button
                 type="button"
                 className="text-primary hover:underline"
                 onClick={() => { setParentLoginOpen(false); setParentRegisterOpen(true); }}
               >
-                Create one
+                Create Parent Account
               </button>
             </p>
           </form>
@@ -608,23 +766,10 @@ export default function LoginPage() {
               Create Parent Account
             </DialogTitle>
             <DialogDescription>
-              Create a parent account linked to your child&apos;s student account.
+              Link your account to your child's student account
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleParentRegister} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="parent-reg-username">Parent Username</Label>
-              <div className="relative">
-                <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  id="parent-reg-username"
-                  placeholder="Choose a parent username"
-                  value={parentRegUsername}
-                  onChange={e => setParentRegUsername(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-            </div>
             <div className="space-y-2">
               <Label htmlFor="parent-reg-name">Your Name</Label>
               <div className="relative">
@@ -639,40 +784,65 @@ export default function LoginPage() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="parent-reg-child-username">Child&apos;s Username</Label>
+              <Label htmlFor="parent-reg-username">Choose a Username</Label>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
-                  id="parent-reg-child-username"
-                  placeholder="Your child's username"
-                  value={parentRegChildUsername}
-                  onChange={e => setParentRegChildUsername(e.target.value)}
+                  id="parent-reg-username"
+                  placeholder="Your parent username"
+                  value={parentRegUsername}
+                  onChange={e => setParentRegUsername(e.target.value)}
                   className="pl-9"
+                  autoComplete="username"
                 />
               </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="parent-reg-child-password">Child&apos;s Password</Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  id="parent-reg-child-password"
-                  type={showParentRegPassword ? 'text' : 'password'}
-                  placeholder="Your child's password (for verification)"
-                  value={parentRegChildPassword}
-                  onChange={e => setParentRegChildPassword(e.target.value)}
-                  className="pl-9 pr-10"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowParentRegPassword(!showParentRegPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  {showParentRegPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
+
+            <div className="border-t border-border pt-3">
+              <p className="text-xs text-muted-foreground mb-3 font-medium">Child's Account Details</p>
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label htmlFor="parent-reg-child-username">Child's Username</Label>
+                  <div className="relative">
+                    <GraduationCap className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      id="parent-reg-child-username"
+                      placeholder="Your child's username"
+                      value={parentRegChildUsername}
+                      onChange={e => setParentRegChildUsername(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="parent-reg-child-password">Child's Password</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      id="parent-reg-child-password"
+                      type={showParentRegPassword ? 'text' : 'password'}
+                      placeholder="Your child's password"
+                      value={parentRegChildPassword}
+                      onChange={e => setParentRegChildPassword(e.target.value)}
+                      className="pl-9 pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowParentRegPassword(!showParentRegPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      {showParentRegPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
-            <Button type="submit" className="w-full" disabled={parentRegLoading}>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+              <strong>Important:</strong> Your child must have already registered their student account on this device. Ask your child to log in on this device first.
+            </div>
+
+            <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white" disabled={parentRegLoading}>
               {parentRegLoading ? (
                 <span className="flex items-center gap-2">
                   <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -682,6 +852,16 @@ export default function LoginPage() {
                 <span className="flex items-center gap-2"><ShieldCheck className="w-4 h-4" />Create Parent Account</span>
               )}
             </Button>
+            <p className="text-xs text-muted-foreground text-center">
+              Already have an account?{' '}
+              <button
+                type="button"
+                className="text-primary hover:underline"
+                onClick={() => { setParentRegisterOpen(false); setParentLoginOpen(true); }}
+              >
+                Login as Parent
+              </button>
+            </p>
           </form>
         </DialogContent>
       </Dialog>

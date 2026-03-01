@@ -1,42 +1,74 @@
 {
   "kind": "spec_vs_diff_report",
   "version": "1.0",
-  "generatedAt": "2026-02-28T12:55:07.780Z",
-  "summary": "All six requirements are implemented in the diff. REQ-1 (DaysLeftBanner), REQ-2 (upcoming reminders/targets on Dashboard), REQ-3 (CalendarClock icon in header), REQ-4 (TimerPage with full CRUD and live countdown), REQ-5 (BottomNavBar), and REQ-6 (TargetMotivationWidget) are all present. One minor gap exists around bottom padding for all pages. One hallucinated feature is the addition of seconds to the countdown display, which was not requested.",
+  "generatedAt": "2026-03-01T10:09:58.531Z",
+  "summary": "The diff shows only two files modified: backend/main.mo (truncated, showing existing data types but no new chat-related types or functions visible) and project_state.json (updated to record pending feature requests). No frontend files were changed, and the Motoko backend additions for chat are not confirmed in the truncated diff. Virtually all requirements appear unimplemented based on available evidence.",
   "missing_requirements": [
     {
-      "id": "REQ-5",
-      "requirement": "The bar does not overlap main page content (page content has bottom padding)",
-      "reason": "The diff shows BottomNavBar is added and fixed at the bottom, but there is no explicit evidence in the truncated diff of bottom padding being added to page content wrappers across all pages to prevent overlap. Only some pages show pb-24 in the truncated content.",
+      "id": "REQ-1",
+      "requirement": "Replace localStorage-based chat with Motoko backend chat system storing messages in stable state with sendMessage, getMessages, markMessagesRead functions.",
+      "reason": "The backend/main.mo diff is truncated and shows no ChatMessage type, no stable chat storage, and no sendMessage/getMessages/markMessagesRead functions. No frontend files (ParentDashboard.tsx, StudentMessagesPage.tsx) were modified.",
       "evidence": [
-        "frontend/src/components/BottomNavBar.tsx",
-        "frontend/src/pages/ProfilePage.tsx"
+        "backend/main.mo"
       ]
-    }
-  ],
-  "hallucinated_features": [
+    },
     {
-      "description": "Timer countdown includes a seconds field in the live display",
-      "reason": "REQ-4 specifies the live countdown should show months, days, hours, and minutes only. The TimerPage implementation computes and likely displays seconds as well, as the computeCountdown function returns a seconds field.",
+      "id": "REQ-2",
+      "requirement": "Implement React Query polling loop (1-second interval) in ParentDashboard.tsx and StudentMessagesPage.tsx.",
+      "reason": "No frontend files were modified in the diff. ParentDashboard.tsx and StudentMessagesPage.tsx are not listed as changed files.",
+      "evidence": []
+    },
+    {
+      "id": "REQ-3",
+      "requirement": "Add online/offline presence tracking with updatePresence and getPresence in Motoko and frontend polling every 30 seconds with green/grey dot display.",
+      "reason": "No presence-related types or functions are visible in the truncated backend/main.mo, and no frontend files were modified.",
       "evidence": [
-        "frontend/src/pages/TimerPage.tsx"
+        "backend/main.mo"
       ]
+    },
+    {
+      "id": "REQ-4",
+      "requirement": "Add typing indicator with setTyping Motoko update call, getTypingStatus polling, and animated ellipsis UI.",
+      "reason": "No typing-related functions are visible in the truncated backend/main.mo, and no frontend files were modified.",
+      "evidence": [
+        "backend/main.mo"
+      ]
+    },
+    {
+      "id": "REQ-5",
+      "requirement": "Display formatted timestamps beneath chat bubbles, group messages by date with separators, and auto-scroll to latest message.",
+      "reason": "No frontend files were modified in the diff.",
+      "evidence": []
+    },
+    {
+      "id": "REQ-6",
+      "requirement": "Redesign chat UI with modern chat bubbles, mobile-responsive layout, avatar initials, and pinned input bar.",
+      "reason": "No frontend files were modified in the diff.",
+      "evidence": []
+    },
+    {
+      "id": "REQ-7",
+      "requirement": "Show in-app toast notification and browser push notification when new message arrives while chat panel is not in focus.",
+      "reason": "No frontend files were modified in the diff.",
+      "evidence": []
+    },
+    {
+      "id": "REQ-8",
+      "requirement": "Add network error handling with 'Connection lost' banner, exponential backoff retry (3 times), and manual Retry button.",
+      "reason": "No frontend files were modified in the diff.",
+      "evidence": []
+    },
+    {
+      "id": "REQ-9",
+      "requirement": "Update unread message badge in Layout.tsx to use backend unread count instead of localStorage.",
+      "reason": "Layout.tsx is not listed as a modified file in the diff.",
+      "evidence": []
     }
   ],
+  "hallucinated_features": [],
   "confidence": 0.82,
   "changed_files": [
-    "frontend-file-summaries.txt",
-    "frontend/src/App.tsx",
-    "frontend/src/components/BottomNavBar.tsx",
-    "frontend/src/components/Layout.tsx",
-    "frontend/src/components/TargetMotivationWidget.tsx",
-    "frontend/src/hooks/useQueries.ts",
-    "frontend/src/pages/Dashboard.tsx",
-    "frontend/src/pages/ParentDashboard.tsx",
-    "frontend/src/pages/ProfilePage.tsx",
-    "frontend/src/pages/StudentMessagesPage.tsx",
-    "frontend/src/pages/TimerPage.tsx",
-    "frontend/src/utils/localStorageService.ts",
+    "backend/main.mo",
     "project_state.json"
   ]
 }

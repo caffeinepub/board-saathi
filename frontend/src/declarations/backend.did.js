@@ -8,38 +8,15 @@
 
 import { IDL } from '@icp-sdk/core/candid';
 
-export const Time = IDL.Int;
+export const FeedbackType = IDL.Variant({
+  'appreciate' : IDL.Null,
+  'scold' : IDL.Null,
+  'comment' : IDL.Null,
+});
 export const UserRole = IDL.Variant({
   'admin' : IDL.Null,
   'user' : IDL.Null,
   'guest' : IDL.Null,
-});
-export const MCQQuestion = IDL.Record({
-  'id' : IDL.Nat,
-  'correctOption' : IDL.Nat,
-  'questionText' : IDL.Text,
-  'options' : IDL.Vec(IDL.Text),
-});
-export const UserAchievement = IDL.Record({
-  'id' : IDL.Nat,
-  'achievedAt' : Time,
-  'achievementType' : IDL.Text,
-});
-export const Flashcard = IDL.Record({
-  'id' : IDL.Nat,
-  'front' : IDL.Text,
-  'learned' : IDL.Bool,
-  'back' : IDL.Text,
-  'chapterId' : IDL.Nat,
-  'subjectId' : IDL.Nat,
-});
-export const PlannerTask = IDL.Record({
-  'id' : IDL.Nat,
-  'startTime' : IDL.Text,
-  'title' : IDL.Text,
-  'date' : Time,
-  'completed' : IDL.Bool,
-  'description' : IDL.Text,
 });
 export const UserProfile = IDL.Record({
   'username' : IDL.Text,
@@ -47,250 +24,101 @@ export const UserProfile = IDL.Record({
   'name' : IDL.Text,
   'studentClass' : IDL.Nat,
 });
-export const Chapter = IDL.Record({
+export const Time = IDL.Int;
+export const StudentFeedback = IDL.Record({
   'id' : IDL.Nat,
-  'weightage' : IDL.Nat,
-  'name' : IDL.Text,
-  'completed' : IDL.Bool,
-  'subjectId' : IDL.Nat,
+  'createdAt' : Time,
+  'feedbackType' : FeedbackType,
+  'message' : IDL.Text,
+  'student' : IDL.Principal,
+  'parent' : IDL.Principal,
 });
-export const MockTest = IDL.Record({
-  'id' : IDL.Nat,
-  'name' : IDL.Text,
-  'subjectId' : IDL.Nat,
-  'questions' : IDL.Vec(MCQQuestion),
-});
-export const Note = IDL.Record({
+export const ChatMessage = IDL.Record({
   'id' : IDL.Nat,
   'content' : IDL.Text,
-  'imageData' : IDL.Opt(IDL.Text),
-  'createdAt' : Time,
-  'chapterId' : IDL.Nat,
+  'isRead' : IDL.Bool,
+  'timestamp' : Time,
+  'senderRole' : IDL.Text,
+  'senderId' : IDL.Principal,
 });
-export const RevisionTask = IDL.Record({
-  'id' : IDL.Nat,
-  'plannerTaskId' : IDL.Opt(IDL.Nat),
-  'completed' : IDL.Bool,
-  'dueDate' : Time,
-  'chapterId' : IDL.Nat,
-  'subjectId' : IDL.Nat,
-  'revisionNumber' : IDL.Nat,
+export const Password = IDL.Record({ 'hash' : IDL.Text });
+export const ParentProfile = IDL.Record({
+  'username' : IDL.Text,
+  'password' : Password,
+  'name' : IDL.Text,
+  'linkedStudentUsername' : IDL.Text,
 });
-export const PersonalBest = IDL.Record({
-  'totalQuestionsPracticed' : IDL.Nat,
-  'fastestTestTime' : IDL.Int,
-  'rankLabel' : IDL.Text,
-  'highestScorePerSubject' : IDL.Vec(IDL.Tuple(IDL.Nat, IDL.Nat)),
-  'totalChaptersCompleted' : IDL.Nat,
-  'longestStreak' : IDL.Nat,
-});
-export const SubjectProgress = IDL.Record({
-  'completedChapters' : IDL.Nat,
-  'subjectName' : IDL.Text,
-  'subjectId' : IDL.Nat,
-  'totalChapters' : IDL.Nat,
-});
-export const ProgressSummary = IDL.Record({
-  'totalTasks' : IDL.Nat,
-  'totalTargets' : IDL.Nat,
-  'totalMockTestsAttempted' : IDL.Nat,
-  'totalTargetsAchieved' : IDL.Nat,
-  'mockTestAverageScore' : IDL.Nat,
-  'totalTasksCompleted' : IDL.Nat,
-  'subjectProgress' : IDL.Vec(SubjectProgress),
-});
-export const Question = IDL.Record({
-  'id' : IDL.Nat,
-  'chapterId' : IDL.Nat,
-  'answer' : IDL.Text,
-  'questionText' : IDL.Text,
-  'subjectId' : IDL.Nat,
-});
-export const Reminder = IDL.Record({
-  'id' : IDL.Nat,
-  'text' : IDL.Text,
-  'dateTime' : Time,
-});
-export const StudyStreak = IDL.Record({
-  'lastActiveDate' : Time,
-  'topStreak' : IDL.Nat,
-  'currentStreak' : IDL.Nat,
-});
-export const Subject = IDL.Record({ 'id' : IDL.Nat, 'name' : IDL.Text });
-export const Target = IDL.Record({
-  'id' : IDL.Nat,
-  'title' : IDL.Text,
-  'completed' : IDL.Bool,
-  'description' : IDL.Text,
-  'deadline' : Time,
-});
-export const QuestionResult = IDL.Record({
-  'correctOption' : IDL.Nat,
-  'isCorrect' : IDL.Bool,
-  'questionText' : IDL.Text,
-  'questionId' : IDL.Nat,
-  'selectedOption' : IDL.Nat,
-});
-export const TestReport = IDL.Record({
-  'total' : IDL.Nat,
-  'testName' : IDL.Text,
-  'results' : IDL.Vec(QuestionResult),
-  'score' : IDL.Nat,
-  'timeTaken' : IDL.Int,
-  'testId' : IDL.Nat,
-  'percentage' : IDL.Nat,
-});
-export const TestAttempt = IDL.Record({
-  'id' : IDL.Nat,
-  'report' : TestReport,
-  'attemptedAt' : Time,
-  'testId' : IDL.Nat,
-});
-export const MCQAnswer = IDL.Record({
-  'questionId' : IDL.Nat,
-  'selectedOption' : IDL.Nat,
+export const PresenceInfo = IDL.Record({
+  'isOnline' : IDL.Bool,
+  'lastSeen' : Time,
 });
 
 export const idlService = IDL.Service({
   '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
-  'addChapter' : IDL.Func([IDL.Nat, IDL.Text, IDL.Nat], [IDL.Nat], []),
-  'addFlashcard' : IDL.Func(
-      [IDL.Nat, IDL.Nat, IDL.Text, IDL.Text],
+  'addStudentFeedback' : IDL.Func(
+      [IDL.Principal, IDL.Text, FeedbackType],
       [IDL.Nat],
       [],
     ),
-  'addNote' : IDL.Func([IDL.Nat, IDL.Text, IDL.Opt(IDL.Text)], [IDL.Nat], []),
-  'addPlannerTask' : IDL.Func(
-      [IDL.Text, IDL.Text, Time, IDL.Text],
-      [IDL.Nat],
-      [],
-    ),
-  'addQuestion' : IDL.Func(
-      [IDL.Nat, IDL.Nat, IDL.Text, IDL.Text],
-      [IDL.Nat],
-      [],
-    ),
-  'addReminder' : IDL.Func([IDL.Text, Time], [IDL.Nat], []),
-  'addSubject' : IDL.Func([IDL.Text], [IDL.Nat], []),
-  'addTarget' : IDL.Func([IDL.Text, IDL.Text, Time], [IDL.Nat], []),
-  'adminListUsers' : IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
   'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
-  'completePlannerTask' : IDL.Func([IDL.Nat, IDL.Bool], [], []),
-  'completeTarget' : IDL.Func([IDL.Nat, IDL.Bool], [], []),
-  'createMockTest' : IDL.Func(
-      [IDL.Text, IDL.Nat, IDL.Vec(MCQQuestion)],
-      [IDL.Nat],
-      [],
-    ),
-  'deleteFlashcard' : IDL.Func([IDL.Nat], [], []),
-  'deleteMockTest' : IDL.Func([IDL.Nat], [], []),
-  'deleteNote' : IDL.Func([IDL.Nat], [], []),
-  'deletePlannerTask' : IDL.Func([IDL.Nat], [], []),
-  'deleteQuestion' : IDL.Func([IDL.Nat], [], []),
-  'deleteReminder' : IDL.Func([IDL.Nat], [], []),
-  'deleteTarget' : IDL.Func([IDL.Nat], [], []),
-  'getAchievements' : IDL.Func([], [IDL.Vec(UserAchievement)], ['query']),
-  'getAllFlashcards' : IDL.Func([], [IDL.Vec(Flashcard)], ['query']),
-  'getAllPlannerTasks' : IDL.Func([], [IDL.Vec(PlannerTask)], ['query']),
+  'deleteFeedback' : IDL.Func([IDL.Nat], [], []),
   'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
   'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
-  'getChaptersForSubject' : IDL.Func([IDL.Nat], [IDL.Vec(Chapter)], ['query']),
-  'getFlashcardsForChapter' : IDL.Func(
-      [IDL.Nat],
-      [IDL.Vec(Flashcard)],
+  'getFeedbackById' : IDL.Func([IDL.Nat], [StudentFeedback], ['query']),
+  'getFeedbackForStudent' : IDL.Func(
+      [IDL.Principal],
+      [IDL.Vec(StudentFeedback)],
       ['query'],
     ),
-  'getMockTest' : IDL.Func([IDL.Nat], [IDL.Opt(MockTest)], ['query']),
-  'getMockTests' : IDL.Func([], [IDL.Vec(MockTest)], ['query']),
-  'getNotesForChapter' : IDL.Func([IDL.Nat], [IDL.Vec(Note)], ['query']),
-  'getPendingRevisionTasks' : IDL.Func([], [IDL.Vec(RevisionTask)], ['query']),
-  'getPersonalBest' : IDL.Func([], [PersonalBest], ['query']),
-  'getPlannerTasksForDate' : IDL.Func(
-      [Time],
-      [IDL.Vec(PlannerTask)],
+  'getFeedbackFromParent' : IDL.Func(
+      [IDL.Principal],
+      [IDL.Vec(StudentFeedback)],
       ['query'],
     ),
-  'getPlannerTasksForMonth' : IDL.Func(
-      [IDL.Nat, IDL.Nat],
-      [IDL.Vec(PlannerTask)],
+  'getMessages' : IDL.Func(
+      [IDL.Principal],
+      [IDL.Vec(ChatMessage), IDL.Bool],
       ['query'],
     ),
-  'getProgressSummary' : IDL.Func([], [ProgressSummary], ['query']),
-  'getQuestionBank' : IDL.Func(
-      [IDL.Opt(IDL.Nat), IDL.Opt(IDL.Nat)],
-      [IDL.Vec(Question)],
+  'getParentByUsername' : IDL.Func(
+      [IDL.Text],
+      [IDL.Opt(ParentProfile)],
       ['query'],
     ),
-  'getQuestionsForChapter' : IDL.Func(
-      [IDL.Nat],
-      [IDL.Vec(Question)],
-      ['query'],
-    ),
-  'getReminders' : IDL.Func([], [IDL.Vec(Reminder)], ['query']),
-  'getRevisionTasks' : IDL.Func([], [IDL.Vec(RevisionTask)], ['query']),
-  'getStudyStreak' : IDL.Func([], [StudyStreak], ['query']),
-  'getSubjects' : IDL.Func([], [IDL.Vec(Subject)], ['query']),
-  'getTargets' : IDL.Func([], [IDL.Vec(Target)], ['query']),
-  'getTestAttempts' : IDL.Func([], [IDL.Vec(TestAttempt)], ['query']),
-  'getTestAttemptsForTest' : IDL.Func(
-      [IDL.Nat],
-      [IDL.Vec(TestAttempt)],
-      ['query'],
-    ),
+  'getPresence' : IDL.Func([IDL.Principal], [PresenceInfo], ['query']),
+  'getTypingStatus' : IDL.Func([IDL.Principal], [IDL.Bool], ['query']),
   'getUserProfile' : IDL.Func(
       [IDL.Principal],
       [IDL.Opt(UserProfile)],
       ['query'],
     ),
   'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
-  'markChapterCompleted' : IDL.Func([IDL.Nat, IDL.Bool], [], []),
-  'markFlashcardLearned' : IDL.Func([IDL.Nat, IDL.Bool], [], []),
-  'markRevisionTaskCompleted' : IDL.Func([IDL.Nat, IDL.Bool], [], []),
-  'recordDailyLogin' : IDL.Func([], [StudyStreak], []),
-  'register' : IDL.Func([IDL.Text, IDL.Text, IDL.Text, IDL.Nat], [], []),
-  'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
-  'submitMockTest' : IDL.Func(
-      [IDL.Nat, IDL.Vec(MCQAnswer), IDL.Int],
-      [TestReport],
+  'markMessagesRead' : IDL.Func([IDL.Principal], [], []),
+  'registerParent' : IDL.Func([IDL.Text, IDL.Text, IDL.Text, IDL.Text], [], []),
+  'registerStudent' : IDL.Func(
+      [IDL.Text, IDL.Text, IDL.Text, IDL.Nat, IDL.Text],
+      [],
       [],
     ),
+  'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
+  'sendMessage' : IDL.Func([IDL.Principal, IDL.Text, IDL.Text], [], []),
+  'setTyping' : IDL.Func([IDL.Bool], [], []),
+  'updateFeedback' : IDL.Func([IDL.Nat, IDL.Text, FeedbackType], [], []),
+  'updatePresence' : IDL.Func([IDL.Bool], [], []),
 });
 
 export const idlInitArgs = [];
 
 export const idlFactory = ({ IDL }) => {
-  const Time = IDL.Int;
+  const FeedbackType = IDL.Variant({
+    'appreciate' : IDL.Null,
+    'scold' : IDL.Null,
+    'comment' : IDL.Null,
+  });
   const UserRole = IDL.Variant({
     'admin' : IDL.Null,
     'user' : IDL.Null,
     'guest' : IDL.Null,
-  });
-  const MCQQuestion = IDL.Record({
-    'id' : IDL.Nat,
-    'correctOption' : IDL.Nat,
-    'questionText' : IDL.Text,
-    'options' : IDL.Vec(IDL.Text),
-  });
-  const UserAchievement = IDL.Record({
-    'id' : IDL.Nat,
-    'achievedAt' : Time,
-    'achievementType' : IDL.Text,
-  });
-  const Flashcard = IDL.Record({
-    'id' : IDL.Nat,
-    'front' : IDL.Text,
-    'learned' : IDL.Bool,
-    'back' : IDL.Text,
-    'chapterId' : IDL.Nat,
-    'subjectId' : IDL.Nat,
-  });
-  const PlannerTask = IDL.Record({
-    'id' : IDL.Nat,
-    'startTime' : IDL.Text,
-    'title' : IDL.Text,
-    'date' : Time,
-    'completed' : IDL.Bool,
-    'description' : IDL.Text,
   });
   const UserProfile = IDL.Record({
     'username' : IDL.Text,
@@ -298,221 +126,88 @@ export const idlFactory = ({ IDL }) => {
     'name' : IDL.Text,
     'studentClass' : IDL.Nat,
   });
-  const Chapter = IDL.Record({
+  const Time = IDL.Int;
+  const StudentFeedback = IDL.Record({
     'id' : IDL.Nat,
-    'weightage' : IDL.Nat,
-    'name' : IDL.Text,
-    'completed' : IDL.Bool,
-    'subjectId' : IDL.Nat,
+    'createdAt' : Time,
+    'feedbackType' : FeedbackType,
+    'message' : IDL.Text,
+    'student' : IDL.Principal,
+    'parent' : IDL.Principal,
   });
-  const MockTest = IDL.Record({
-    'id' : IDL.Nat,
-    'name' : IDL.Text,
-    'subjectId' : IDL.Nat,
-    'questions' : IDL.Vec(MCQQuestion),
-  });
-  const Note = IDL.Record({
+  const ChatMessage = IDL.Record({
     'id' : IDL.Nat,
     'content' : IDL.Text,
-    'imageData' : IDL.Opt(IDL.Text),
-    'createdAt' : Time,
-    'chapterId' : IDL.Nat,
+    'isRead' : IDL.Bool,
+    'timestamp' : Time,
+    'senderRole' : IDL.Text,
+    'senderId' : IDL.Principal,
   });
-  const RevisionTask = IDL.Record({
-    'id' : IDL.Nat,
-    'plannerTaskId' : IDL.Opt(IDL.Nat),
-    'completed' : IDL.Bool,
-    'dueDate' : Time,
-    'chapterId' : IDL.Nat,
-    'subjectId' : IDL.Nat,
-    'revisionNumber' : IDL.Nat,
+  const Password = IDL.Record({ 'hash' : IDL.Text });
+  const ParentProfile = IDL.Record({
+    'username' : IDL.Text,
+    'password' : Password,
+    'name' : IDL.Text,
+    'linkedStudentUsername' : IDL.Text,
   });
-  const PersonalBest = IDL.Record({
-    'totalQuestionsPracticed' : IDL.Nat,
-    'fastestTestTime' : IDL.Int,
-    'rankLabel' : IDL.Text,
-    'highestScorePerSubject' : IDL.Vec(IDL.Tuple(IDL.Nat, IDL.Nat)),
-    'totalChaptersCompleted' : IDL.Nat,
-    'longestStreak' : IDL.Nat,
-  });
-  const SubjectProgress = IDL.Record({
-    'completedChapters' : IDL.Nat,
-    'subjectName' : IDL.Text,
-    'subjectId' : IDL.Nat,
-    'totalChapters' : IDL.Nat,
-  });
-  const ProgressSummary = IDL.Record({
-    'totalTasks' : IDL.Nat,
-    'totalTargets' : IDL.Nat,
-    'totalMockTestsAttempted' : IDL.Nat,
-    'totalTargetsAchieved' : IDL.Nat,
-    'mockTestAverageScore' : IDL.Nat,
-    'totalTasksCompleted' : IDL.Nat,
-    'subjectProgress' : IDL.Vec(SubjectProgress),
-  });
-  const Question = IDL.Record({
-    'id' : IDL.Nat,
-    'chapterId' : IDL.Nat,
-    'answer' : IDL.Text,
-    'questionText' : IDL.Text,
-    'subjectId' : IDL.Nat,
-  });
-  const Reminder = IDL.Record({
-    'id' : IDL.Nat,
-    'text' : IDL.Text,
-    'dateTime' : Time,
-  });
-  const StudyStreak = IDL.Record({
-    'lastActiveDate' : Time,
-    'topStreak' : IDL.Nat,
-    'currentStreak' : IDL.Nat,
-  });
-  const Subject = IDL.Record({ 'id' : IDL.Nat, 'name' : IDL.Text });
-  const Target = IDL.Record({
-    'id' : IDL.Nat,
-    'title' : IDL.Text,
-    'completed' : IDL.Bool,
-    'description' : IDL.Text,
-    'deadline' : Time,
-  });
-  const QuestionResult = IDL.Record({
-    'correctOption' : IDL.Nat,
-    'isCorrect' : IDL.Bool,
-    'questionText' : IDL.Text,
-    'questionId' : IDL.Nat,
-    'selectedOption' : IDL.Nat,
-  });
-  const TestReport = IDL.Record({
-    'total' : IDL.Nat,
-    'testName' : IDL.Text,
-    'results' : IDL.Vec(QuestionResult),
-    'score' : IDL.Nat,
-    'timeTaken' : IDL.Int,
-    'testId' : IDL.Nat,
-    'percentage' : IDL.Nat,
-  });
-  const TestAttempt = IDL.Record({
-    'id' : IDL.Nat,
-    'report' : TestReport,
-    'attemptedAt' : Time,
-    'testId' : IDL.Nat,
-  });
-  const MCQAnswer = IDL.Record({
-    'questionId' : IDL.Nat,
-    'selectedOption' : IDL.Nat,
-  });
+  const PresenceInfo = IDL.Record({ 'isOnline' : IDL.Bool, 'lastSeen' : Time });
   
   return IDL.Service({
     '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
-    'addChapter' : IDL.Func([IDL.Nat, IDL.Text, IDL.Nat], [IDL.Nat], []),
-    'addFlashcard' : IDL.Func(
-        [IDL.Nat, IDL.Nat, IDL.Text, IDL.Text],
+    'addStudentFeedback' : IDL.Func(
+        [IDL.Principal, IDL.Text, FeedbackType],
         [IDL.Nat],
         [],
       ),
-    'addNote' : IDL.Func([IDL.Nat, IDL.Text, IDL.Opt(IDL.Text)], [IDL.Nat], []),
-    'addPlannerTask' : IDL.Func(
-        [IDL.Text, IDL.Text, Time, IDL.Text],
-        [IDL.Nat],
-        [],
-      ),
-    'addQuestion' : IDL.Func(
-        [IDL.Nat, IDL.Nat, IDL.Text, IDL.Text],
-        [IDL.Nat],
-        [],
-      ),
-    'addReminder' : IDL.Func([IDL.Text, Time], [IDL.Nat], []),
-    'addSubject' : IDL.Func([IDL.Text], [IDL.Nat], []),
-    'addTarget' : IDL.Func([IDL.Text, IDL.Text, Time], [IDL.Nat], []),
-    'adminListUsers' : IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
     'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
-    'completePlannerTask' : IDL.Func([IDL.Nat, IDL.Bool], [], []),
-    'completeTarget' : IDL.Func([IDL.Nat, IDL.Bool], [], []),
-    'createMockTest' : IDL.Func(
-        [IDL.Text, IDL.Nat, IDL.Vec(MCQQuestion)],
-        [IDL.Nat],
-        [],
-      ),
-    'deleteFlashcard' : IDL.Func([IDL.Nat], [], []),
-    'deleteMockTest' : IDL.Func([IDL.Nat], [], []),
-    'deleteNote' : IDL.Func([IDL.Nat], [], []),
-    'deletePlannerTask' : IDL.Func([IDL.Nat], [], []),
-    'deleteQuestion' : IDL.Func([IDL.Nat], [], []),
-    'deleteReminder' : IDL.Func([IDL.Nat], [], []),
-    'deleteTarget' : IDL.Func([IDL.Nat], [], []),
-    'getAchievements' : IDL.Func([], [IDL.Vec(UserAchievement)], ['query']),
-    'getAllFlashcards' : IDL.Func([], [IDL.Vec(Flashcard)], ['query']),
-    'getAllPlannerTasks' : IDL.Func([], [IDL.Vec(PlannerTask)], ['query']),
+    'deleteFeedback' : IDL.Func([IDL.Nat], [], []),
     'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
     'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
-    'getChaptersForSubject' : IDL.Func(
-        [IDL.Nat],
-        [IDL.Vec(Chapter)],
+    'getFeedbackById' : IDL.Func([IDL.Nat], [StudentFeedback], ['query']),
+    'getFeedbackForStudent' : IDL.Func(
+        [IDL.Principal],
+        [IDL.Vec(StudentFeedback)],
         ['query'],
       ),
-    'getFlashcardsForChapter' : IDL.Func(
-        [IDL.Nat],
-        [IDL.Vec(Flashcard)],
+    'getFeedbackFromParent' : IDL.Func(
+        [IDL.Principal],
+        [IDL.Vec(StudentFeedback)],
         ['query'],
       ),
-    'getMockTest' : IDL.Func([IDL.Nat], [IDL.Opt(MockTest)], ['query']),
-    'getMockTests' : IDL.Func([], [IDL.Vec(MockTest)], ['query']),
-    'getNotesForChapter' : IDL.Func([IDL.Nat], [IDL.Vec(Note)], ['query']),
-    'getPendingRevisionTasks' : IDL.Func(
-        [],
-        [IDL.Vec(RevisionTask)],
+    'getMessages' : IDL.Func(
+        [IDL.Principal],
+        [IDL.Vec(ChatMessage), IDL.Bool],
         ['query'],
       ),
-    'getPersonalBest' : IDL.Func([], [PersonalBest], ['query']),
-    'getPlannerTasksForDate' : IDL.Func(
-        [Time],
-        [IDL.Vec(PlannerTask)],
+    'getParentByUsername' : IDL.Func(
+        [IDL.Text],
+        [IDL.Opt(ParentProfile)],
         ['query'],
       ),
-    'getPlannerTasksForMonth' : IDL.Func(
-        [IDL.Nat, IDL.Nat],
-        [IDL.Vec(PlannerTask)],
-        ['query'],
-      ),
-    'getProgressSummary' : IDL.Func([], [ProgressSummary], ['query']),
-    'getQuestionBank' : IDL.Func(
-        [IDL.Opt(IDL.Nat), IDL.Opt(IDL.Nat)],
-        [IDL.Vec(Question)],
-        ['query'],
-      ),
-    'getQuestionsForChapter' : IDL.Func(
-        [IDL.Nat],
-        [IDL.Vec(Question)],
-        ['query'],
-      ),
-    'getReminders' : IDL.Func([], [IDL.Vec(Reminder)], ['query']),
-    'getRevisionTasks' : IDL.Func([], [IDL.Vec(RevisionTask)], ['query']),
-    'getStudyStreak' : IDL.Func([], [StudyStreak], ['query']),
-    'getSubjects' : IDL.Func([], [IDL.Vec(Subject)], ['query']),
-    'getTargets' : IDL.Func([], [IDL.Vec(Target)], ['query']),
-    'getTestAttempts' : IDL.Func([], [IDL.Vec(TestAttempt)], ['query']),
-    'getTestAttemptsForTest' : IDL.Func(
-        [IDL.Nat],
-        [IDL.Vec(TestAttempt)],
-        ['query'],
-      ),
+    'getPresence' : IDL.Func([IDL.Principal], [PresenceInfo], ['query']),
+    'getTypingStatus' : IDL.Func([IDL.Principal], [IDL.Bool], ['query']),
     'getUserProfile' : IDL.Func(
         [IDL.Principal],
         [IDL.Opt(UserProfile)],
         ['query'],
       ),
     'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
-    'markChapterCompleted' : IDL.Func([IDL.Nat, IDL.Bool], [], []),
-    'markFlashcardLearned' : IDL.Func([IDL.Nat, IDL.Bool], [], []),
-    'markRevisionTaskCompleted' : IDL.Func([IDL.Nat, IDL.Bool], [], []),
-    'recordDailyLogin' : IDL.Func([], [StudyStreak], []),
-    'register' : IDL.Func([IDL.Text, IDL.Text, IDL.Text, IDL.Nat], [], []),
-    'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
-    'submitMockTest' : IDL.Func(
-        [IDL.Nat, IDL.Vec(MCQAnswer), IDL.Int],
-        [TestReport],
+    'markMessagesRead' : IDL.Func([IDL.Principal], [], []),
+    'registerParent' : IDL.Func(
+        [IDL.Text, IDL.Text, IDL.Text, IDL.Text],
+        [],
         [],
       ),
+    'registerStudent' : IDL.Func(
+        [IDL.Text, IDL.Text, IDL.Text, IDL.Nat, IDL.Text],
+        [],
+        [],
+      ),
+    'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
+    'sendMessage' : IDL.Func([IDL.Principal, IDL.Text, IDL.Text], [], []),
+    'setTyping' : IDL.Func([IDL.Bool], [], []),
+    'updateFeedback' : IDL.Func([IDL.Nat, IDL.Text, FeedbackType], [], []),
+    'updatePresence' : IDL.Func([IDL.Bool], [], []),
   });
 };
 

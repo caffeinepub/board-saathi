@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   createRouter,
   createRoute,
@@ -34,7 +34,6 @@ import TimerPage from './pages/TimerPage';
 
 import { getCurrentUserId, getParentSession } from './utils/localStorageService';
 
-// Lazy import for flashcards
 import FlashcardsPage from './pages/FlashcardsPage';
 import AboutPage from './pages/AboutPage';
 
@@ -47,19 +46,55 @@ const queryClient = new QueryClient({
   },
 });
 
-// Root route
+// ─── Service Worker Registration ────────────────────────────────────────────
+
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+
+  window.addEventListener('load', async () => {
+    try {
+      const registration = await navigator.serviceWorker.register('/sw.js', {
+        scope: '/',
+      });
+
+      // When a new SW activates and takes control, reload to get fresh assets
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        window.location.reload();
+      });
+
+      registration.addEventListener('updatefound', () => {
+        const newWorker = registration.installing;
+        if (!newWorker) return;
+        newWorker.addEventListener('statechange', () => {
+          if (
+            newWorker.state === 'installed' &&
+            navigator.serviceWorker.controller
+          ) {
+            // New content available; the controllerchange listener will reload
+            newWorker.postMessage({ type: 'SKIP_WAITING' });
+          }
+        });
+      });
+    } catch (err) {
+      console.error('[SW] Registration failed:', err);
+    }
+  });
+}
+
+registerServiceWorker();
+
+// ─── Routes ─────────────────────────────────────────────────────────────────
+
 const rootRoute = createRootRoute({
   component: () => <Outlet />,
 });
 
-// Login route
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',
   component: LoginPage,
 });
 
-// Parent dashboard route
 const parentDashboardRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/parent-dashboard',
@@ -70,7 +105,6 @@ const parentDashboardRoute = createRoute({
   component: ParentDashboard,
 });
 
-// Student layout route (auth guard)
 const studentLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: 'layout',
@@ -81,7 +115,6 @@ const studentLayoutRoute = createRoute({
   component: Layout,
 });
 
-// Student child routes
 const dashboardRoute = createRoute({
   getParentRoute: () => studentLayoutRoute,
   path: '/',

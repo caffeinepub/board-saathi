@@ -1,14 +1,18 @@
 # Specification
 
 ## Summary
-**Goal:** Enhance the Board Saathi homepage with new widgets and navigation, add a Timer/Countdown page, and introduce a persistent bottom navigation bar.
+**Goal:** Upgrade the parent–student live chat in Board Saathi with real-time messaging features, replacing the localStorage-based system with an ICP Motoko backend and a polled React frontend.
 
 **Planned changes:**
-- Add a "Days Left to End of Month" countdown banner at the top of the Dashboard/homepage
-- Add a section on the homepage showing the user's upcoming reminders and active targets (pulled from localStorage), displaying title, due date/time, and status
-- Add a "Target 🎯 100%" motivational widget on the homepage with gold/trophy/champion styling, showing overall target completion percentage and an encouraging message
-- Add a calendar-clock icon button in the homepage header (beside the existing message icon) that navigates to a new Timer page
-- Create a new Timer/Countdown page where users can add multiple timers with a start date (month + day) and end date (year + month + day); each saved timer displays a large live countdown in months, days, hours, and minutes; timers persist in localStorage and can be deleted individually
-- Add a persistent fixed bottom navigation bar visible on every authenticated page with five buttons (Home, Subject, Question, Reminder, Target), each with an icon and label; the active page is highlighted and page content has bottom padding to avoid overlap
+- Add Motoko stable state for messages (senderId, senderRole, messageText, timestamp, read flag) with `sendMessage`, `getMessages`, and `markMessagesRead` update/query functions.
+- Add Motoko stable state for presence (`lastSeen`, `isOnline`) with `updatePresence` and `getPresence` functions, and typing state with `setTyping` and `getTypingStatus`.
+- Replace localStorage chat in `ParentDashboard.tsx` and `StudentMessagesPage.tsx` with React Query polling (1-second interval) against the Motoko backend for real-time message delivery.
+- Display online/offline presence in the chat header: green dot + "Online" if active within 60 seconds, grey dot + "Last seen HH:MM" otherwise; update presence every 30 seconds.
+- Show a "User is typing…" animated ellipsis indicator when the remote party is typing, cleared after 3 seconds of inactivity.
+- Display a formatted timestamp (HH:MM AM/PM) under each bubble, date separators between day groups, and auto-scroll to the latest message.
+- Redesign chat UI with modern bubbles (outgoing right/primary colour, incoming left/neutral), avatar initials, pinned input bar, fully mobile responsive layout.
+- Show in-app toast notifications for new messages when the chat panel is not focused; fire browser push notifications when `document.visibilityState` is hidden.
+- Add network error handling: "Connection lost – retrying…" banner, automatic retry with exponential backoff (up to 3 times), and a manual Retry button on persistent failure.
+- Update the unread message badge in `Layout.tsx` to use the backend unread count instead of localStorage.
 
-**User-visible outcome:** Students can see days remaining in the month, their reminders and targets at a glance, and a motivational target widget on the homepage; they can set and track multiple countdown timers; and they can quickly navigate to any main section of the app via a fixed bottom navigation bar.
+**User-visible outcome:** Parents and students experience a modern, near-real-time chat with typing indicators, presence status, timestamped and date-grouped messages, push/toast notifications for new messages, and reliable error recovery — all backed by the ICP Motoko canister.

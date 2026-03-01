@@ -1,146 +1,710 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from '@tanstack/react-router';
-import {
-  BookOpen,
-  ChevronDown,
-  ChevronUp,
-  LogOut,
-  MessageSquare,
-  Send,
-  Star,
-  AlertTriangle,
-  CheckCircle,
-  User,
-  Clock,
-  TrendingUp,
-  Brain,
-  ClipboardList,
-} from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Progress } from '@/components/ui/progress';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import {
+  MessageSquare,
+  Heart,
+  AlertTriangle,
+  Send,
+  Bell,
+  BookOpen,
+  Target,
+  TrendingUp,
+  Calendar,
+  Award,
+  CheckCircle2,
+  Clock,
+  Flame,
+  User,
+  LogOut,
+  Zap,
+  Brain,
+  X,
+} from 'lucide-react';
+import { useNavigate } from '@tanstack/react-router';
 import {
   getParentSession,
   clearParentSession,
-  saveParentMessage,
+  getLinkedChildData,
+  ParentSession,
+  LinkedChildData,
 } from '../utils/localStorageService';
-import { useGetParentReplies } from '../hooks/useQueries';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Types ───────────────────────────────────────────────────────────────────
 
-interface ChildSubject {
-  id: number;
-  name: string;
+interface ChatMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  senderRole: 'parent' | 'student';
+  message: string;
+  timestamp: number;
 }
 
-interface ChildChapter {
-  id: number;
-  subjectId: number;
-  name: string;
-  completed: boolean;
+interface FeedbackItem {
+  id: string;
+  type: 'comment' | 'appreciate' | 'scold';
+  message: string;
+  timestamp: number;
+  parentName: string;
+  read: boolean;
 }
 
-interface ChildMockTest {
-  id: number;
-  name: string;
-  subjectId: number;
+interface Alert {
+  id: string;
+  type: 'inactivity' | 'low_score' | 'missed_target' | 'student_reply' | 'streak';
+  message: string;
+  icon: React.ReactNode;
+  color: string;
 }
 
-interface ChildTestAttempt {
-  id: number;
-  testId: number;
-  report: { score: number; total: number; percentage: number; testName: string };
-  attemptedAt: number;
-}
+// ─── LocalStorage Helpers ────────────────────────────────────────────────────
 
-interface ChildFlashcard {
-  id: number;
-  front: string;
-  back: string;
-  learned: boolean;
-}
-
-interface ChildNote {
-  id: number;
-  chapterId: number;
-  content: string;
-}
-
-interface ChildQuestion {
-  id: number;
-  questionText: string;
-  answer: string;
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function tryParseArray<T>(key: string): T[] {
+function getChatMessages(parentUsername: string, studentUsername: string): ChatMessage[] {
   try {
+    const key = `chat_${parentUsername}_${studentUsername}`;
     const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T[]) : [];
+    if (!raw) return [];
+    return JSON.parse(raw);
   } catch {
     return [];
   }
 }
 
-function getChildDataFromStorage(childUsername: string) {
-  const subjects = tryParseArray<ChildSubject>(`subjects_${childUsername}`);
-  const chapters = tryParseArray<ChildChapter>(`chapters_${childUsername}`);
-  const mockTests = tryParseArray<ChildMockTest>(`mockTests_${childUsername}`);
-  const testAttempts = tryParseArray<ChildTestAttempt>(`testAttempts_${childUsername}`);
-  const flashcards = tryParseArray<ChildFlashcard>(`flashcards_${childUsername}`);
-  const notes = tryParseArray<ChildNote>(`notes_${childUsername}`);
-  const questions = tryParseArray<ChildQuestion>(`questions_${childUsername}`);
-  return { subjects, chapters, mockTests, testAttempts, flashcards, notes, questions };
+function saveChatMessages(parentUsername: string, studentUsername: string, messages: ChatMessage[]) {
+  const key = `chat_${parentUsername}_${studentUsername}`;
+  localStorage.setItem(key, JSON.stringify(messages));
 }
 
-function formatTimestamp(ts: number): string {
-  const d = new Date(ts);
-  return d.toLocaleString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+function getFeedbackList(studentUsername: string): FeedbackItem[] {
+  try {
+    const key = `feedback_${studentUsername}`;
+    const raw = localStorage.getItem(key);
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
 }
 
-// ─── Collapsible Section ──────────────────────────────────────────────────────
+function saveFeedback(studentUsername: string, feedback: FeedbackItem[]) {
+  const key = `feedback_${studentUsername}`;
+  localStorage.setItem(key, JSON.stringify(feedback));
+}
 
-function Section({
-  title,
-  icon: Icon,
-  children,
-  defaultOpen = false,
+function formatTime(ts: number): string {
+  return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatDate(ts: number): string {
+  return new Date(ts).toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+function formatDateTime(ts: number): string {
+  return `${formatDate(ts)} ${formatTime(ts)}`;
+}
+
+// ─── Sub-components ──────────────────────────────────────────────────────────
+
+// Feedback Panel
+function StudentFeedbackPanel({
+  session,
+  studentUsername,
 }: {
-  title: string;
-  icon: React.ElementType;
-  children: React.ReactNode;
-  defaultOpen?: boolean;
+  session: ParentSession;
+  studentUsername: string;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const [openType, setOpenType] = useState<'comment' | 'appreciate' | 'scold' | null>(null);
+  const [message, setMessage] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [successMsg, setSuccessMsg] = useState('');
+
+  const handleSubmit = () => {
+    if (!message.trim()) return;
+    setSubmitting(true);
+    const existing = getFeedbackList(studentUsername);
+    const newItem: FeedbackItem = {
+      id: Date.now().toString(),
+      type: openType!,
+      message: message.trim(),
+      timestamp: Date.now(),
+      parentName: session.parentName,
+      read: false,
+    };
+    saveFeedback(studentUsername, [...existing, newItem]);
+    setMessage('');
+    setSubmitting(false);
+    setOpenType(null);
+    setSuccessMsg(`${openType === 'appreciate' ? 'Appreciation' : openType === 'scold' ? 'Scold' : 'Comment'} sent!`);
+    setTimeout(() => setSuccessMsg(''), 3000);
+  };
+
+  const feedbackTypes = [
+    {
+      type: 'comment' as const,
+      label: 'Comment',
+      icon: <MessageSquare className="w-5 h-5" />,
+      color: 'bg-blue-500 hover:bg-blue-600',
+      desc: 'Leave a general comment for your child',
+    },
+    {
+      type: 'appreciate' as const,
+      label: 'Appreciate',
+      icon: <Heart className="w-5 h-5" />,
+      color: 'bg-green-500 hover:bg-green-600',
+      desc: "Appreciate your child's efforts",
+    },
+    {
+      type: 'scold' as const,
+      label: 'Scold',
+      icon: <AlertTriangle className="w-5 h-5" />,
+      color: 'bg-red-500 hover:bg-red-600',
+      desc: 'Express concern or disappointment',
+    },
+  ];
+
   return (
-    <Card className="overflow-hidden">
-      <button
-        className="w-full flex items-center justify-between p-4 hover:bg-accent/50 transition-colors"
-        onClick={() => setOpen(o => !o)}
-      >
-        <div className="flex items-center gap-2 font-semibold text-foreground">
-          <Icon className="w-4 h-4 text-primary" />
-          {title}
-        </div>
-        {open ? (
-          <ChevronUp className="w-4 h-4 text-muted-foreground" />
-        ) : (
-          <ChevronDown className="w-4 h-4 text-muted-foreground" />
+    <Card className="border-0 shadow-md bg-card">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base font-semibold">
+          <MessageSquare className="w-5 h-5 text-primary" />
+          Student Feedback
+        </CardTitle>
+        <p className="text-xs text-muted-foreground">Send a message, appreciation, or concern to your child</p>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {successMsg && (
+          <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 rounded-lg px-3 py-2 text-sm flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4" /> {successMsg}
+          </div>
         )}
-      </button>
-      {open && (
-        <CardContent className="pt-0 pb-4 px-4 border-t border-border/50">
-          {children}
-        </CardContent>
-      )}
+        <div className="grid grid-cols-3 gap-2">
+          {feedbackTypes.map((ft) => (
+            <button
+              key={ft.type}
+              onClick={() => setOpenType(ft.type)}
+              className={`${ft.color} text-white rounded-xl py-3 px-2 flex flex-col items-center gap-1.5 transition-all active:scale-95 shadow-sm`}
+            >
+              {ft.icon}
+              <span className="text-xs font-semibold">{ft.label}</span>
+            </button>
+          ))}
+        </div>
+
+        <Dialog open={openType !== null} onOpenChange={(o) => !o && setOpenType(null)}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                {openType === 'comment' && <MessageSquare className="w-5 h-5 text-blue-500" />}
+                {openType === 'appreciate' && <Heart className="w-5 h-5 text-green-500" />}
+                {openType === 'scold' && <AlertTriangle className="w-5 h-5 text-red-500" />}
+                {openType === 'comment' ? 'Leave a Comment' : openType === 'appreciate' ? 'Appreciate Your Child' : 'Express Concern'}
+              </DialogTitle>
+              <DialogDescription>
+                {feedbackTypes.find((f) => f.type === openType)?.desc}
+              </DialogDescription>
+            </DialogHeader>
+            <Textarea
+              placeholder={
+                openType === 'appreciate'
+                  ? "e.g. Great job on your test today! I'm proud of you."
+                  : openType === 'scold'
+                  ? 'e.g. You need to focus more on your studies.'
+                  : 'e.g. Remember to complete your revision tasks.'
+              }
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              rows={4}
+              className="resize-none"
+            />
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setOpenType(null)}>Cancel</Button>
+              <Button
+                onClick={handleSubmit}
+                disabled={!message.trim() || submitting}
+                className={
+                  openType === 'appreciate'
+                    ? 'bg-green-500 hover:bg-green-600 text-white'
+                    : openType === 'scold'
+                    ? 'bg-red-500 hover:bg-red-600 text-white'
+                    : 'bg-blue-500 hover:bg-blue-600 text-white'
+                }
+              >
+                {submitting ? 'Sending...' : 'Send'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Live Chat Panel
+function LiveChatPanel({
+  session,
+  studentUsername,
+}: {
+  session: ParentSession;
+  studentUsername: string;
+}) {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState('');
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  const loadMessages = () => {
+    const msgs = getChatMessages(session.parentUsername, studentUsername);
+    setMessages(msgs);
+  };
+
+  useEffect(() => {
+    loadMessages();
+    const interval = setInterval(loadMessages, 3000);
+    return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.parentUsername, studentUsername]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const handleSend = () => {
+    if (!input.trim()) return;
+    const newMsg: ChatMessage = {
+      id: Date.now().toString(),
+      senderId: session.parentUsername,
+      senderName: session.parentName,
+      senderRole: 'parent',
+      message: input.trim(),
+      timestamp: Date.now(),
+    };
+    const updated = [...messages, newMsg];
+    saveChatMessages(session.parentUsername, studentUsername, updated);
+    setMessages(updated);
+    setInput('');
+  };
+
+  return (
+    <Card className="border-0 shadow-md bg-card flex flex-col">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base font-semibold">
+          <Send className="w-5 h-5 text-primary" />
+          Live Chat with Student
+          <Badge variant="secondary" className="ml-auto text-xs">Live</Badge>
+        </CardTitle>
+        <p className="text-xs text-muted-foreground">Chat updates every 3 seconds</p>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3 p-4 pt-0">
+        <ScrollArea className="h-52 rounded-lg border bg-muted/30 p-3">
+          {messages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-sm gap-2 py-8">
+              <MessageSquare className="w-8 h-8 opacity-30" />
+              <span>No messages yet. Start the conversation!</span>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`flex flex-col ${msg.senderRole === 'parent' ? 'items-end' : 'items-start'}`}
+                >
+                  <span className="text-xs text-muted-foreground mb-0.5">
+                    {msg.senderName} · {formatDateTime(msg.timestamp)}
+                  </span>
+                  <div
+                    className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${
+                      msg.senderRole === 'parent'
+                        ? 'bg-primary text-primary-foreground rounded-tr-sm'
+                        : 'bg-secondary text-secondary-foreground rounded-tl-sm'
+                    }`}
+                  >
+                    {msg.message}
+                  </div>
+                </div>
+              ))}
+              <div ref={bottomRef} />
+            </div>
+          )}
+        </ScrollArea>
+        <div className="flex gap-2">
+          <Input
+            placeholder="Type a message..."
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
+            className="flex-1"
+          />
+          <Button onClick={handleSend} disabled={!input.trim()} size="icon" className="shrink-0">
+            <Send className="w-4 h-4" />
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Attendance Summary Card
+function AttendanceSummaryCard({ childData }: { childData: LinkedChildData }) {
+  const { plannerTasks, streak } = childData;
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+
+  const activeDaysThisMonth = new Set(
+    plannerTasks
+      .filter((t) => t.date >= monthStart.getTime())
+      .map((t) => new Date(t.date).toDateString())
+  ).size;
+
+  const today = new Date().getDate();
+
+  const last14 = Array.from({ length: 14 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (13 - i));
+    d.setHours(0, 0, 0, 0);
+    const dayStr = d.toDateString();
+    const hasActivity = plannerTasks.some((t) => new Date(t.date).toDateString() === dayStr);
+    return { date: d, hasActivity };
+  });
+
+  return (
+    <Card className="border-0 shadow-md bg-card">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base font-semibold">
+          <Flame className="w-5 h-5 text-orange-500" />
+          Attendance & Streak
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-3 gap-3">
+          <div className="bg-orange-50 dark:bg-orange-900/20 rounded-xl p-3 text-center">
+            <div className="text-2xl font-bold text-orange-500">{streak.currentStreak}</div>
+            <div className="text-xs text-muted-foreground mt-0.5">Current Streak</div>
+          </div>
+          <div className="bg-primary/10 rounded-xl p-3 text-center">
+            <div className="text-2xl font-bold text-primary">{activeDaysThisMonth}</div>
+            <div className="text-xs text-muted-foreground mt-0.5">Days Active</div>
+          </div>
+          <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-xl p-3 text-center">
+            <div className="text-2xl font-bold text-yellow-500">{streak.topStreak}</div>
+            <div className="text-xs text-muted-foreground mt-0.5">Best Streak</div>
+          </div>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground mb-2">Last 14 days activity</p>
+          <div className="flex gap-1 flex-wrap">
+            {last14.map((day, i) => (
+              <div
+                key={i}
+                title={day.date.toDateString()}
+                className={`w-6 h-6 rounded-sm ${day.hasActivity ? 'bg-primary' : 'bg-muted'}`}
+              />
+            ))}
+          </div>
+        </div>
+        <div>
+          <div className="flex justify-between text-xs text-muted-foreground mb-1">
+            <span>Monthly Progress</span>
+            <span>{activeDaysThisMonth}/{today} days</span>
+          </div>
+          <Progress value={(activeDaysThisMonth / Math.max(today, 1)) * 100} className="h-2" />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Grade Performance Card
+function GradePerformanceCard({ childData }: { childData: LinkedChildData }) {
+  const { testAttempts } = childData;
+
+  const scores = testAttempts.map((a) => a.report.percentage);
+  const best = scores.length ? Math.max(...scores) : 0;
+  const avg = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+  const last5 = testAttempts.slice(-5).map((a) => ({
+    name: a.report.testName?.slice(0, 8) || 'Test',
+    score: a.report.percentage,
+  }));
+
+  const getBarColor = (score: number) => {
+    if (score >= 75) return 'bg-green-500';
+    if (score >= 50) return 'bg-yellow-500';
+    return 'bg-red-500';
+  };
+
+  return (
+    <Card className="border-0 shadow-md bg-card">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base font-semibold">
+          <TrendingUp className="w-5 h-5 text-blue-500" />
+          Grade Performance
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3 text-center">
+            <div className="text-2xl font-bold text-blue-500">{best}%</div>
+            <div className="text-xs text-muted-foreground mt-0.5">Best Score</div>
+          </div>
+          <div className="bg-primary/10 rounded-xl p-3 text-center">
+            <div className="text-2xl font-bold text-primary">{avg}%</div>
+            <div className="text-xs text-muted-foreground mt-0.5">Average Score</div>
+          </div>
+        </div>
+        {last5.length > 0 ? (
+          <div>
+            <p className="text-xs text-muted-foreground mb-2">Last {last5.length} tests</p>
+            <div className="flex items-end gap-1 h-16">
+              {last5.map((t, i) => (
+                <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                  <div
+                    className={`w-full rounded-t-sm ${getBarColor(t.score)}`}
+                    style={{ height: `${Math.max(t.score, 4)}%` }}
+                  />
+                  <span className="text-[10px] text-muted-foreground truncate w-full text-center">{t.name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground text-center py-2">No test attempts yet</p>
+        )}
+        <div className="text-xs text-muted-foreground">
+          Total tests attempted: <span className="font-semibold text-foreground">{testAttempts.length}</span>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Smart Alerts Card
+function SmartAlertsCard({ childData }: { childData: LinkedChildData }) {
+  const { testAttempts, targets, streak } = childData;
+  const [dismissed, setDismissed] = useState<string[]>([]);
+
+  const alerts: Alert[] = [];
+
+  // Inactivity alert
+  if (streak.lastActiveDate > 0) {
+    const daysSinceActive = Math.floor((Date.now() - streak.lastActiveDate) / 86400000);
+    if (daysSinceActive >= 2) {
+      alerts.push({
+        id: 'inactivity',
+        type: 'inactivity',
+        message: `No activity for ${daysSinceActive} days. Encourage your child to study!`,
+        icon: <Clock className="w-4 h-4" />,
+        color: 'text-orange-500 bg-orange-50 dark:bg-orange-900/20',
+      });
+    }
+  }
+
+  // Low score alert
+  const recentAttempts = testAttempts.slice(-3);
+  const lowScores = recentAttempts.filter((a) => a.report.percentage < 50);
+  if (lowScores.length > 0) {
+    alerts.push({
+      id: 'low_score',
+      type: 'low_score',
+      message: `${lowScores.length} recent test(s) scored below 50%. Extra practice needed.`,
+      icon: <AlertTriangle className="w-4 h-4" />,
+      color: 'text-red-500 bg-red-50 dark:bg-red-900/20',
+    });
+  }
+
+  // Missed targets
+  const now = Date.now();
+  const missedTargets = targets.filter((t) => !t.completed && t.deadline < now);
+  if (missedTargets.length > 0) {
+    alerts.push({
+      id: 'missed_target',
+      type: 'missed_target',
+      message: `${missedTargets.length} target(s) missed deadline. Review with your child.`,
+      icon: <Target className="w-4 h-4" />,
+      color: 'text-yellow-600 bg-yellow-50 dark:bg-yellow-900/20',
+    });
+  }
+
+  // Streak milestone
+  if (streak.currentStreak >= 7) {
+    alerts.push({
+      id: 'streak',
+      type: 'streak',
+      message: `🔥 Amazing! ${streak.currentStreak}-day study streak! Keep it up!`,
+      icon: <Flame className="w-4 h-4" />,
+      color: 'text-green-600 bg-green-50 dark:bg-green-900/20',
+    });
+  }
+
+  const visible = alerts.filter((a) => !dismissed.includes(a.id));
+
+  return (
+    <Card className="border-0 shadow-md bg-card">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base font-semibold">
+          <Bell className="w-5 h-5 text-yellow-500" />
+          Smart Alerts
+          {visible.length > 0 && (
+            <Badge className="ml-auto text-xs bg-yellow-500 text-white">{visible.length}</Badge>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {visible.length === 0 ? (
+          <div className="flex flex-col items-center py-4 text-muted-foreground text-sm gap-2">
+            <CheckCircle2 className="w-8 h-8 text-green-500 opacity-60" />
+            <span>All clear! No alerts right now.</span>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {visible.map((alert) => (
+              <div
+                key={alert.id}
+                className={`flex items-start gap-2 rounded-lg px-3 py-2 text-sm ${alert.color}`}
+              >
+                <span className="mt-0.5 shrink-0">{alert.icon}</span>
+                <span className="flex-1">{alert.message}</span>
+                <button
+                  onClick={() => setDismissed((d) => [...d, alert.id])}
+                  className="shrink-0 opacity-60 hover:opacity-100"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Upcoming Events Card
+function UpcomingEventsCard({ childData }: { childData: LinkedChildData }) {
+  const { targets, plannerTasks } = childData;
+  const now = Date.now();
+  const weekAhead = now + 7 * 86400000;
+
+  const upcomingTargets = targets
+    .filter((t) => !t.completed && t.deadline >= now && t.deadline <= weekAhead)
+    .sort((a, b) => a.deadline - b.deadline);
+
+  const upcomingTasks = plannerTasks
+    .filter((t) => !t.completed && t.date >= now && t.date <= weekAhead)
+    .sort((a, b) => a.date - b.date)
+    .slice(0, 5);
+
+  return (
+    <Card className="border-0 shadow-md bg-card">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base font-semibold">
+          <Calendar className="w-5 h-5 text-purple-500" />
+          Upcoming Events
+          <span className="text-xs text-muted-foreground font-normal ml-1">(next 7 days)</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {upcomingTargets.length === 0 && upcomingTasks.length === 0 ? (
+          <p className="text-xs text-muted-foreground text-center py-2">No upcoming events this week</p>
+        ) : (
+          <>
+            {upcomingTargets.map((t) => (
+              <div key={`target-${t.id}`} className="flex items-center gap-2 text-sm">
+                <Target className="w-4 h-4 text-purple-500 shrink-0" />
+                <span className="flex-1 truncate">{t.title}</span>
+                <span className="text-xs text-muted-foreground shrink-0">{formatDate(t.deadline)}</span>
+              </div>
+            ))}
+            {upcomingTasks.map((t) => (
+              <div key={`task-${t.id}`} className="flex items-center gap-2 text-sm">
+                <BookOpen className="w-4 h-4 text-blue-500 shrink-0" />
+                <span className="flex-1 truncate">{t.title}</span>
+                <span className="text-xs text-muted-foreground shrink-0">{formatDate(t.date)}</span>
+              </div>
+            ))}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Behavior & Progress Card
+function BehaviorProgressCard({ childData }: { childData: LinkedChildData }) {
+  const { chapters, testAttempts, targets, streak } = childData;
+
+  const completedChapters = chapters.filter((c) => c.completed).length;
+  const totalChapters = chapters.length;
+  const completedTargets = targets.filter((t) => t.completed).length;
+  const totalTargets = targets.length;
+  const avgScore =
+    testAttempts.length
+      ? Math.round(testAttempts.reduce((s, a) => s + a.report.percentage, 0) / testAttempts.length)
+      : 0;
+
+  const getBehaviorTag = () => {
+    if (streak.currentStreak >= 7 && avgScore >= 75) return { label: 'Excellent', color: 'text-green-600 bg-green-100 dark:bg-green-900/30' };
+    if (streak.currentStreak >= 3 && avgScore >= 50) return { label: 'Good', color: 'text-blue-600 bg-blue-100 dark:bg-blue-900/30' };
+    if (avgScore >= 50) return { label: 'Average', color: 'text-yellow-600 bg-yellow-100 dark:bg-yellow-900/30' };
+    return { label: 'Needs Attention', color: 'text-red-600 bg-red-100 dark:bg-red-900/30' };
+  };
+
+  const tag = getBehaviorTag();
+
+  return (
+    <Card className="border-0 shadow-md bg-card">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base font-semibold">
+          <Brain className="w-5 h-5 text-indigo-500" />
+          Behavior & Progress
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Overall Status:</span>
+          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${tag.color}`}>{tag.label}</span>
+        </div>
+        <div className="space-y-2">
+          <div>
+            <div className="flex justify-between text-xs text-muted-foreground mb-1">
+              <span>Chapters Completed</span>
+              <span>{completedChapters}/{totalChapters}</span>
+            </div>
+            <Progress value={totalChapters > 0 ? (completedChapters / totalChapters) * 100 : 0} className="h-2" />
+          </div>
+          <div>
+            <div className="flex justify-between text-xs text-muted-foreground mb-1">
+              <span>Targets Achieved</span>
+              <span>{completedTargets}/{totalTargets}</span>
+            </div>
+            <Progress value={totalTargets > 0 ? (completedTargets / totalTargets) * 100 : 0} className="h-2" />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-sm">
+          <div className="flex items-center gap-1.5">
+            <Award className="w-4 h-4 text-yellow-500" />
+            <span className="text-muted-foreground">Avg Score:</span>
+            <span className="font-semibold">{avgScore}%</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Zap className="w-4 h-4 text-orange-500" />
+            <span className="text-muted-foreground">Streak:</span>
+            <span className="font-semibold">{streak.currentStreak}d</span>
+          </div>
+        </div>
+      </CardContent>
     </Card>
   );
 }
@@ -149,302 +713,142 @@ function Section({
 
 export default function ParentDashboard() {
   const navigate = useNavigate();
-  const session = getParentSession();
+  const [session, setSession] = useState<ParentSession | null>(null);
+  const [childData, setChildData] = useState<LinkedChildData | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const [messageText, setMessageText] = useState('');
-  const [messageSent, setMessageSent] = useState(false);
-  const [sendingType, setSendingType] = useState<'comment' | 'scold' | 'appreciation' | null>(null);
-
-  const { data: replies = [], markAsSeen } = useGetParentReplies(session?.parentUsername ?? null);
-
-  // Mark unseen replies as seen after 2 seconds
   useEffect(() => {
-    if (!session?.parentUsername) return;
-    const unseen = replies.filter(r => !r.seen);
-    if (unseen.length === 0) return;
-    const timer = setTimeout(() => {
-      unseen.forEach(r => markAsSeen(r.id));
-    }, 2000);
-    return () => clearTimeout(timer);
-  }, [replies, session?.parentUsername, markAsSeen]);
-
-  if (!session) {
-    navigate({ to: '/login' });
-    return null;
-  }
-
-  const childData = getChildDataFromStorage(session.childUsername);
-  const sortedReplies = [...replies].sort((a, b) => b.repliedAt - a.repliedAt);
-
-  const handleSendMessage = (type: 'comment' | 'scold' | 'appreciation') => {
-    if (!messageText.trim()) return;
-    setSendingType(type);
-
-    saveParentMessage(session.childUsername, {
-      fromParent: session.parentUsername,
-      message: messageText.trim(),
-      type,
-    });
-
-    setMessageText('');
-    setMessageSent(true);
-    setSendingType(null);
-
-    setTimeout(() => setMessageSent(false), 3000);
-  };
+    const s = getParentSession();
+    if (!s) {
+      navigate({ to: '/login' });
+      return;
+    }
+    setSession(s);
+    const data = getLinkedChildData(s.parentUsername);
+    setChildData(data);
+    setLoading(false);
+  }, [navigate]);
 
   const handleLogout = () => {
     clearParentSession();
     navigate({ to: '/login' });
   };
 
-  // Compute stats
-  const totalChapters = childData.chapters.length;
-  const completedChapters = childData.chapters.filter(c => c.completed).length;
-  const totalFlashcards = childData.flashcards.length;
-  const learnedFlashcards = childData.flashcards.filter(f => f.learned).length;
-  const totalTests = childData.mockTests.length;
-  const attemptedTests = childData.testAttempts.length;
-  const avgScore =
-    childData.testAttempts.length > 0
-      ? Math.round(
-          childData.testAttempts.reduce((sum, a) => sum + a.report.percentage, 0) /
-            childData.testAttempts.length
-        )
-      : 0;
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center space-y-3">
+          <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-muted-foreground text-sm">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return null;
+  }
+
+  const studentUsername = session.childUsername;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
       {/* Header */}
-      <header className="bg-card border-b border-border sticky top-0 z-20">
-        <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
+      <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-md border-b border-border/50 px-4 py-3">
+        <div className="max-w-2xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-              <BookOpen className="w-4 h-4 text-primary-foreground" />
+            <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center">
+              <User className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h1 className="font-bold text-foreground text-sm leading-tight">Parent Dashboard</h1>
-              <p className="text-xs text-muted-foreground">
-                Viewing:{' '}
-                <span className="font-medium text-foreground">{session.childUsername}</span>
-              </p>
+              <p className="text-sm font-semibold text-foreground leading-tight">{session.parentName}</p>
+              <p className="text-xs text-muted-foreground">Parent Portal</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground hidden sm:block">
-              Hi, <span className="font-medium text-foreground">{session.parentName}</span>
-            </span>
-            <Button variant="ghost" size="sm" onClick={handleLogout} className="gap-1.5">
-              <LogOut className="w-4 h-4" />
-              <span className="hidden sm:inline">Logout</span>
-            </Button>
-          </div>
+          <Button variant="ghost" size="sm" onClick={handleLogout} className="gap-1.5 text-muted-foreground">
+            <LogOut className="w-4 h-4" />
+            <span className="hidden sm:inline">Logout</span>
+          </Button>
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 py-6 space-y-4">
-        {/* Overview Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[
-            {
-              label: 'Chapters Done',
-              value: `${completedChapters}/${totalChapters}`,
-              icon: BookOpen,
-              color: 'text-primary',
-            },
-            {
-              label: 'Tests Attempted',
-              value: `${attemptedTests}/${totalTests}`,
-              icon: ClipboardList,
-              color: 'text-blue-500',
-            },
-            {
-              label: 'Avg Score',
-              value: `${avgScore}%`,
-              icon: TrendingUp,
-              color: 'text-green-500',
-            },
-            {
-              label: 'Flashcards',
-              value: `${learnedFlashcards}/${totalFlashcards}`,
-              icon: Brain,
-              color: 'text-purple-500',
-            },
-          ].map(({ label, value, icon: Icon, color }) => (
-            <Card key={label}>
-              <CardContent className="p-4 flex items-center gap-3">
-                <Icon className={`w-5 h-5 ${color} shrink-0`} />
-                <div>
-                  <p className="text-lg font-bold text-foreground leading-tight">{value}</p>
-                  <p className="text-xs text-muted-foreground">{label}</p>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+      <main className="max-w-2xl mx-auto px-4 py-6 space-y-5 pb-10">
+        {/* Hero Banner */}
+        <div className="rounded-2xl bg-gradient-to-r from-primary to-primary/70 text-primary-foreground p-5 shadow-lg">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-sm opacity-80 mb-1">Welcome back,</p>
+              <h1 className="text-2xl font-bold">{session.parentName} 👋</h1>
+              <p className="text-sm opacity-80 mt-1">
+                Monitoring <span className="font-semibold">{studentUsername}</span>'s progress
+              </p>
+            </div>
+            <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
+              <BookOpen className="w-6 h-6" />
+            </div>
+          </div>
+          {childData && (
+            <div className="mt-4 grid grid-cols-3 gap-3">
+              <div className="bg-white/15 rounded-xl p-2.5 text-center">
+                <div className="text-xl font-bold">{childData.chapters.filter(c => c.completed).length}</div>
+                <div className="text-xs opacity-75">Chapters Done</div>
+              </div>
+              <div className="bg-white/15 rounded-xl p-2.5 text-center">
+                <div className="text-xl font-bold">{childData.testAttempts.length}</div>
+                <div className="text-xs opacity-75">Tests Taken</div>
+              </div>
+              <div className="bg-white/15 rounded-xl p-2.5 text-center">
+                <div className="text-xl font-bold">{childData.streak.currentStreak}</div>
+                <div className="text-xs opacity-75">Day Streak</div>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Send Message */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <MessageSquare className="w-4 h-4 text-primary" />
-              Send Message to {session.childUsername}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Textarea
-              value={messageText}
-              onChange={e => setMessageText(e.target.value)}
-              placeholder="Write a message to your child..."
-              className="resize-none"
-              rows={3}
-            />
-            {messageSent && (
-              <p className="text-sm text-green-600 flex items-center gap-1">
-                <CheckCircle className="w-4 h-4" /> Message sent successfully!
-              </p>
-            )}
-            <div className="flex flex-wrap gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1.5 border-green-500/40 text-green-700 hover:bg-green-50"
-                onClick={() => handleSendMessage('appreciation')}
-                disabled={!messageText.trim() || sendingType !== null}
-              >
-                <Star className="w-3.5 h-3.5" />
-                Appreciate
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1.5 border-blue-500/40 text-blue-700 hover:bg-blue-50"
-                onClick={() => handleSendMessage('comment')}
-                disabled={!messageText.trim() || sendingType !== null}
-              >
-                <Send className="w-3.5 h-3.5" />
-                Comment
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1.5 border-red-500/40 text-red-700 hover:bg-red-50"
-                onClick={() => handleSendMessage('scold')}
-                disabled={!messageText.trim() || sendingType !== null}
-              >
-                <AlertTriangle className="w-3.5 h-3.5" />
-                Scold
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Replies from child */}
-        {sortedReplies.length > 0 && (
-          <Section title="Replies from Child" icon={MessageSquare} defaultOpen>
-            <div className="space-y-3 mt-3">
-              {sortedReplies.map(reply => (
-                <div
-                  key={reply.id}
-                  className={`p-3 rounded-lg border ${
-                    !reply.seen ? 'border-primary/40 bg-primary/5' : 'border-border bg-accent/30'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-2">
-                      <User className="w-3.5 h-3.5 text-muted-foreground" />
-                      <span className="text-xs font-semibold text-foreground">{reply.fromChild}</span>
-                      {!reply.seen && (
-                        <Badge className="text-[9px] h-4 px-1.5">New</Badge>
-                      )}
-                    </div>
-                    <span className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {formatTimestamp(reply.repliedAt)}
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mb-1">
-                    Re: "{reply.originalMessage.slice(0, 60)}{reply.originalMessage.length > 60 ? '…' : ''}"
-                  </p>
-                  <p className="text-sm text-foreground">{reply.replyText}</p>
-                </div>
-              ))}
-            </div>
-          </Section>
+        {/* No child data warning */}
+        {!childData && (
+          <div className="rounded-xl border border-yellow-200 bg-yellow-50 dark:bg-yellow-900/20 dark:border-yellow-800 p-4 text-sm text-yellow-700 dark:text-yellow-300 flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+            <span>
+              Could not load student data for <strong>{studentUsername}</strong>. The student may not have logged in yet or their data is unavailable.
+            </span>
+          </div>
         )}
 
-        {/* Child Data Sections */}
-        <Section title={`Chapters (${completedChapters}/${totalChapters} completed)`} icon={BookOpen} defaultOpen>
-          {childData.chapters.length === 0 ? (
-            <p className="text-sm text-muted-foreground mt-3">No chapters added yet.</p>
-          ) : (
-            <div className="space-y-1.5 mt-3">
-              {childData.chapters.map(ch => (
-                <div key={ch.id} className="flex items-center gap-2 text-sm">
-                  {ch.completed ? (
-                    <CheckCircle className="w-4 h-4 text-green-500 shrink-0" />
-                  ) : (
-                    <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/30 shrink-0" />
-                  )}
-                  <span className={ch.completed ? 'line-through text-muted-foreground' : 'text-foreground'}>
-                    {ch.name}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </Section>
+        {/* Feedback Panel */}
+        <StudentFeedbackPanel session={session} studentUsername={studentUsername} />
 
-        <Section title={`Test Attempts (${attemptedTests} attempts)`} icon={ClipboardList}>
-          {childData.testAttempts.length === 0 ? (
-            <p className="text-sm text-muted-foreground mt-3">No tests attempted yet.</p>
-          ) : (
-            <div className="space-y-2 mt-3">
-              {childData.testAttempts.slice(-5).reverse().map(attempt => (
-                <div key={attempt.id} className="flex items-center justify-between text-sm p-2 rounded-lg bg-accent/50">
-                  <span className="text-foreground font-medium truncate flex-1 mr-2">
-                    {attempt.report.testName}
-                  </span>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Badge
-                      variant={attempt.report.percentage >= 60 ? 'default' : 'destructive'}
-                      className="text-xs"
-                    >
-                      {attempt.report.percentage}%
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">
-                      {formatTimestamp(attempt.attemptedAt)}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Section>
+        {/* Live Chat */}
+        <LiveChatPanel session={session} studentUsername={studentUsername} />
 
-        <Section title={`Flashcards (${learnedFlashcards}/${totalFlashcards} learned)`} icon={Brain}>
-          {childData.flashcards.length === 0 ? (
-            <p className="text-sm text-muted-foreground mt-3">No flashcards created yet.</p>
-          ) : (
-            <div className="space-y-1.5 mt-3">
-              {childData.flashcards.slice(0, 10).map(card => (
-                <div key={card.id} className="flex items-center gap-2 text-sm">
-                  {card.learned ? (
-                    <CheckCircle className="w-4 h-4 text-green-500 shrink-0" />
-                  ) : (
-                    <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/30 shrink-0" />
-                  )}
-                  <span className="text-foreground truncate">{card.front}</span>
-                </div>
-              ))}
-              {childData.flashcards.length > 10 && (
-                <p className="text-xs text-muted-foreground">
-                  +{childData.flashcards.length - 10} more flashcards
-                </p>
-              )}
-            </div>
-          )}
-        </Section>
+        {/* Data-driven cards — only shown when child data is available */}
+        {childData && (
+          <>
+            <AttendanceSummaryCard childData={childData} />
+            <GradePerformanceCard childData={childData} />
+            <SmartAlertsCard childData={childData} />
+            <UpcomingEventsCard childData={childData} />
+            <BehaviorProgressCard childData={childData} />
+          </>
+        )}
+
+        {/* Footer */}
+        <footer className="text-center text-xs text-muted-foreground pt-4 pb-2">
+          <p>
+            Built with{' '}
+            <Heart className="w-3 h-3 inline text-red-500" />{' '}
+            using{' '}
+            <a
+              href={`https://caffeine.ai/?utm_source=Caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-foreground"
+            >
+              caffeine.ai
+            </a>
+          </p>
+          <p className="mt-1">© {new Date().getFullYear()} Board Saathi</p>
+        </footer>
       </main>
     </div>
   );

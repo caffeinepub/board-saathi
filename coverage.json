@@ -1,107 +1,116 @@
 {
   "kind": "coverage_report",
   "version": "1.0",
-  "generatedAt": "2026-02-28T12:55:07.783Z",
+  "generatedAt": "2026-03-01T10:09:58.534Z",
   "sources": {
     "buildRequest": true,
     "implementationPlan": true
   },
   "requirements": {
-    "total": 6,
-    "implemented": 6,
+    "total": 9,
+    "implemented": 0,
     "items": [
       {
         "id": "REQ-1",
-        "summary": "Display a 'Days Left to End of Month' countdown banner at the very top of the homepage (Dashboard). Calculate the number of days remaining in the current calendar month and show it prominently (e.g., '12 days left in this month').",
-        "status": "implemented",
-        "plannedFiles": [
-          "frontend/src/pages/Dashboard.tsx"
-        ],
-        "matchedFiles": [
-          "frontend/src/pages/Dashboard.tsx"
-        ]
+        "summary": "Replace the existing localStorage-based chat in ParentDashboard.tsx and StudentMessagesPage.tsx with a polling-free real-time chat system. Use the Internet Computer backend (Motoko) to store messages in stable state with a timestamp, senderId, senderRole (parent/student), messageText, and a read flag. Expose query and update functions: sendMessage, getMessages, and markMessagesRead.",
+        "status": "unknown",
+        "plannedFiles": [],
+        "matchedFiles": []
       },
       {
         "id": "REQ-2",
-        "summary": "On the homepage (Dashboard), show a section that lists the user's upcoming reminders and active targets so they are immediately visible without navigating away. Pull data from existing localStorage reminders and targets. Show title, deadline/time, and a short status indicator for each item.",
-        "status": "implemented",
+        "summary": "Implement a React Query polling loop (1-second interval) in both ParentDashboard.tsx and StudentMessagesPage.tsx to simulate real-time message delivery by refetching getMessages frequently, giving the appearance of instant updates without a page refresh.",
+        "status": "missing",
         "plannedFiles": [
-          "frontend/src/pages/Dashboard.tsx"
+          "frontend/src/hooks/useQueries.ts",
+          "frontend/src/pages/ParentDashboard.tsx",
+          "frontend/src/pages/StudentMessagesPage.tsx"
         ],
-        "matchedFiles": [
-          "frontend/src/pages/Dashboard.tsx"
-        ]
+        "matchedFiles": []
       },
       {
         "id": "REQ-3",
-        "summary": "Add a calendar-clock icon button in the top-right area of the homepage header, positioned beside the existing message icon. Tapping this icon navigates the user to a new Timer/Countdown page.",
-        "status": "implemented",
+        "summary": "Add online/offline presence tracking. Store a lastSeen timestamp and isOnline boolean per user in Motoko stable state. Expose updatePresence and getPresence functions. Call updatePresence on a regular interval (every 30 seconds) from the frontend. Display a green dot for online (seen within 60 seconds) and a grey dot with 'Last seen' time for offline users in the chat header.",
+        "status": "missing",
         "plannedFiles": [
-          "frontend/src/pages/Dashboard.tsx"
+          "frontend/src/hooks/useQueries.ts",
+          "frontend/src/pages/ParentDashboard.tsx",
+          "frontend/src/pages/StudentMessagesPage.tsx"
         ],
-        "matchedFiles": [
-          "frontend/src/pages/Dashboard.tsx"
-        ]
+        "matchedFiles": []
       },
       {
         "id": "REQ-4",
-        "summary": "Create a new Timer/Countdown page reachable from the calendar-clock icon. The page must: (1) Allow adding a new timer with a 'Start' date field (month + day) and an 'End' date field (year + month + day). (2) After saving, display a live countdown showing months, days, hours, and minutes remaining until the End date in large, prominent text. (3) Support multiple simultaneous timers listed on the page. (4) Each timer entry shows its label/end-date and live countdown. (5) Provide a delete option for each timer.",
-        "status": "implemented",
+        "summary": "Add a typing indicator. Store a isTyping boolean and typingUserId in component state. When the local user types in the input field, broadcast a setTyping(true) flag via a Motoko update call and clear it after 3 seconds of inactivity. Poll getTypingStatus on a 1-second interval and display 'User is typing...' with an animated ellipsis below the message list when the remote party is typing.",
+        "status": "missing",
         "plannedFiles": [
-          "frontend/src/pages/TimerPage.tsx",
-          "frontend/src/App.tsx",
-          "frontend/src/utils/localStorageService.ts"
+          "frontend/src/hooks/useQueries.ts",
+          "frontend/src/pages/ParentDashboard.tsx",
+          "frontend/src/pages/StudentMessagesPage.tsx"
         ],
-        "matchedFiles": [
-          "frontend/src/pages/TimerPage.tsx",
-          "frontend/src/App.tsx",
-          "frontend/src/utils/localStorageService.ts"
-        ]
+        "matchedFiles": []
       },
       {
         "id": "REQ-5",
-        "summary": "Add a persistent bottom navigation bar that is visible on every page of the app. The bar must contain five buttons with icons and labels: Home, Subject, Question, Reminder, and Target. Each button navigates to its corresponding page. The bar must remain fixed at the bottom of the screen and not be hidden by page content.",
-        "status": "implemented",
+        "summary": "Display a formatted timestamp (e.g., '10:32 AM') beneath each chat bubble. Group messages by date with a centered date separator (e.g., 'Today', 'Yesterday', 'Dec 12'). Auto-scroll the message list to the latest message whenever new messages arrive or a message is sent.",
+        "status": "missing",
         "plannedFiles": [
-          "frontend/src/components/BottomNavBar.tsx",
-          "frontend/src/components/Layout.tsx"
+          "frontend/src/pages/ParentDashboard.tsx",
+          "frontend/src/pages/StudentMessagesPage.tsx"
         ],
-        "matchedFiles": [
-          "frontend/src/components/BottomNavBar.tsx",
-          "frontend/src/components/Layout.tsx"
-        ]
+        "matchedFiles": []
       },
       {
         "id": "REQ-6",
-        "summary": "Add a 'Target 🎯 100%' motivational widget on the homepage (Dashboard). Style it with a bold, winner/champion aesthetic — use gold/trophy colors, celebratory typography, and an energetic design to keep students motivated. Show the user's current overall target completion percentage and a message encouraging them to reach 100%.",
-        "status": "implemented",
+        "summary": "Redesign the chat UI in ParentDashboard.tsx and StudentMessagesPage.tsx with modern chat bubbles: outgoing messages aligned right with a primary colour background, incoming messages aligned left with a neutral background, rounded corners, sender avatar initials, and a clean input bar with a send button. Ensure the layout is fully mobile responsive with the message list taking available vertical space and the input bar pinned to the bottom.",
+        "status": "missing",
         "plannedFiles": [
-          "frontend/src/components/TargetMotivationWidget.tsx",
-          "frontend/src/pages/Dashboard.tsx"
+          "frontend/src/pages/ParentDashboard.tsx",
+          "frontend/src/pages/StudentMessagesPage.tsx"
         ],
-        "matchedFiles": [
-          "frontend/src/components/TargetMotivationWidget.tsx",
-          "frontend/src/pages/Dashboard.tsx"
-        ]
+        "matchedFiles": []
+      },
+      {
+        "id": "REQ-7",
+        "summary": "Show an in-app notification toast (using the existing toast provider) when a new message arrives while the user is on a different page or the chat panel is not in focus. Use the existing browser Notification API (already configured in the service worker) to send a push notification with the sender's name and message preview when the document is hidden.",
+        "status": "missing",
+        "plannedFiles": [
+          "frontend/src/pages/ParentDashboard.tsx",
+          "frontend/src/pages/StudentMessagesPage.tsx"
+        ],
+        "matchedFiles": []
+      },
+      {
+        "id": "REQ-8",
+        "summary": "Add basic network error handling in the chat components. Show a non-blocking banner ('Connection lost – retrying…') when backend calls fail due to network issues. Automatically retry failed message sends up to 3 times with exponential backoff. Display a persistent error state if all retries fail, with a manual 'Retry' button.",
+        "status": "missing",
+        "plannedFiles": [
+          "frontend/src/hooks/useQueries.ts",
+          "frontend/src/pages/ParentDashboard.tsx",
+          "frontend/src/pages/StudentMessagesPage.tsx"
+        ],
+        "matchedFiles": []
+      },
+      {
+        "id": "REQ-9",
+        "summary": "Update the unread message badge in Layout.tsx to reflect the real unread message count fetched from the Motoko backend via the getMessages and markMessagesRead functions, replacing the current localStorage-based unread count logic.",
+        "status": "missing",
+        "plannedFiles": [
+          "frontend/src/components/Layout.tsx"
+        ],
+        "matchedFiles": []
       }
     ]
   },
   "changedFiles": [
+    "backend/main.mo",
     "build-request.json",
     "feature_evidence.json",
-    "frontend-file-summaries.txt",
     "frontend-implementation-plan.json",
-    "frontend/src/App.tsx",
-    "frontend/src/components/BottomNavBar.tsx",
-    "frontend/src/components/Layout.tsx",
-    "frontend/src/components/TargetMotivationWidget.tsx",
-    "frontend/src/hooks/useQueries.ts",
-    "frontend/src/pages/Dashboard.tsx",
-    "frontend/src/pages/ParentDashboard.tsx",
-    "frontend/src/pages/ProfilePage.tsx",
-    "frontend/src/pages/StudentMessagesPage.tsx",
-    "frontend/src/pages/TimerPage.tsx",
-    "frontend/src/utils/localStorageService.ts",
+    "frontend/src/backend.d.ts",
+    "frontend/src/backend.ts",
+    "frontend/src/declarations/backend.did.d.ts",
+    "frontend/src/declarations/backend.did.js",
     "project_state.json",
     "scratch/component-selection.json",
     "spec.md",

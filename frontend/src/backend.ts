@@ -89,145 +89,46 @@ export class ExternalBlob {
         return this;
     }
 }
-export interface ProgressSummary {
-    totalTasks: bigint;
-    totalTargets: bigint;
-    totalMockTestsAttempted: bigint;
-    totalTargetsAchieved: bigint;
-    mockTestAverageScore: bigint;
-    totalTasksCompleted: bigint;
-    subjectProgress: Array<SubjectProgress>;
-}
-export interface Note {
+export interface StudentFeedback {
     id: bigint;
-    content: string;
-    imageData?: string;
     createdAt: Time;
-    chapterId: bigint;
+    feedbackType: FeedbackType;
+    message: string;
+    student: Principal;
+    parent: Principal;
 }
-export interface MockTest {
-    id: bigint;
-    name: string;
-    subjectId: bigint;
-    questions: Array<MCQQuestion>;
+export interface PresenceInfo {
+    isOnline: boolean;
+    lastSeen: Time;
 }
 export type Time = bigint;
-export interface MCQQuestion {
+export interface Password {
+    hash: string;
+}
+export interface ChatMessage {
     id: bigint;
-    correctOption: bigint;
-    questionText: string;
-    options: Array<string>;
+    content: string;
+    isRead: boolean;
+    timestamp: Time;
+    senderRole: string;
+    senderId: Principal;
 }
-export interface PersonalBest {
-    totalQuestionsPracticed: bigint;
-    fastestTestTime: bigint;
-    rankLabel: string;
-    highestScorePerSubject: Array<[bigint, bigint]>;
-    totalChaptersCompleted: bigint;
-    longestStreak: bigint;
-}
-export interface MCQAnswer {
-    questionId: bigint;
-    selectedOption: bigint;
-}
-export interface SubjectProgress {
-    completedChapters: bigint;
-    subjectName: string;
-    subjectId: bigint;
-    totalChapters: bigint;
-}
-export interface Chapter {
-    id: bigint;
-    weightage: bigint;
+export interface ParentProfile {
+    username: string;
+    password: Password;
     name: string;
-    completed: boolean;
-    subjectId: bigint;
-}
-export interface QuestionResult {
-    correctOption: bigint;
-    isCorrect: boolean;
-    questionText: string;
-    questionId: bigint;
-    selectedOption: bigint;
-}
-export interface Target {
-    id: bigint;
-    title: string;
-    completed: boolean;
-    description: string;
-    deadline: Time;
-}
-export interface UserAchievement {
-    id: bigint;
-    achievedAt: Time;
-    achievementType: string;
-}
-export interface TestAttempt {
-    id: bigint;
-    report: TestReport;
-    attemptedAt: Time;
-    testId: bigint;
-}
-export interface PlannerTask {
-    id: bigint;
-    startTime: string;
-    title: string;
-    date: Time;
-    completed: boolean;
-    description: string;
-}
-export interface Reminder {
-    id: bigint;
-    text: string;
-    dateTime: Time;
-}
-export interface Flashcard {
-    id: bigint;
-    front: string;
-    learned: boolean;
-    back: string;
-    chapterId: bigint;
-    subjectId: bigint;
-}
-export interface TestReport {
-    total: bigint;
-    testName: string;
-    results: Array<QuestionResult>;
-    score: bigint;
-    timeTaken: bigint;
-    testId: bigint;
-    percentage: bigint;
-}
-export interface Question {
-    id: bigint;
-    chapterId: bigint;
-    answer: string;
-    questionText: string;
-    subjectId: bigint;
-}
-export interface StudyStreak {
-    lastActiveDate: Time;
-    topStreak: bigint;
-    currentStreak: bigint;
-}
-export interface RevisionTask {
-    id: bigint;
-    plannerTaskId?: bigint;
-    completed: boolean;
-    dueDate: Time;
-    chapterId: bigint;
-    subjectId: bigint;
-    revisionNumber: bigint;
-}
-export interface Subject {
-    id: bigint;
-    name: string;
+    linkedStudentUsername: string;
 }
 export interface UserProfile {
     username: string;
     school: string;
     name: string;
     studentClass: bigint;
+}
+export enum FeedbackType {
+    appreciate = "appreciate",
+    scold = "scold",
+    comment = "comment"
 }
 export enum UserRole {
     admin = "admin",
@@ -236,210 +137,30 @@ export enum UserRole {
 }
 export interface backendInterface {
     _initializeAccessControlWithSecret(userSecret: string): Promise<void>;
-    /**
-     * / addChapter: only authenticated users (#user) can add chapters.
-     */
-    addChapter(subjectId: bigint, name: string, weightage: bigint): Promise<bigint>;
-    /**
-     * / addFlashcard: only authenticated users (#user) can add flashcards.
-     */
-    addFlashcard(chapterId: bigint, subjectId: bigint, front: string, back: string): Promise<bigint>;
-    /**
-     * / addNote: only authenticated users (#user) can add notes.
-     */
-    addNote(chapterId: bigint, content: string, imageData: string | null): Promise<bigint>;
-    /**
-     * / addPlannerTask: only authenticated users (#user) can add planner tasks.
-     */
-    addPlannerTask(title: string, description: string, date: Time, startTime: string): Promise<bigint>;
-    /**
-     * / addQuestion: only authenticated users (#user) can add questions.
-     */
-    addQuestion(chapterId: bigint, subjectId: bigint, questionText: string, answer: string): Promise<bigint>;
-    /**
-     * / addReminder: only authenticated users (#user) can add reminders.
-     */
-    addReminder(text: string, dateTime: Time): Promise<bigint>;
-    addSubject(name: string): Promise<bigint>;
-    /**
-     * / addTarget: only authenticated users (#user) can add targets.
-     */
-    addTarget(title: string, description: string, deadline: Time): Promise<bigint>;
-    /**
-     * / adminListUsers: only admins can list all users.
-     */
-    adminListUsers(): Promise<Array<Principal>>;
+    addStudentFeedback(student: Principal, message: string, feedbackType: FeedbackType): Promise<bigint>;
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
-    /**
-     * / completePlannerTask: only authenticated users (#user) can update their own planner tasks.
-     * / Completing a task also updates the study streak.
-     */
-    completePlannerTask(taskId: bigint, completed: boolean): Promise<void>;
-    /**
-     * / completeTarget: only authenticated users (#user) can update their own targets.
-     */
-    completeTarget(targetId: bigint, completed: boolean): Promise<void>;
-    /**
-     * / createMockTest: only authenticated users (#user) can create mock tests.
-     */
-    createMockTest(name: string, subjectId: bigint, questions: Array<MCQQuestion>): Promise<bigint>;
-    /**
-     * / deleteFlashcard: only authenticated users (#user) can delete their own flashcards.
-     */
-    deleteFlashcard(cardId: bigint): Promise<void>;
-    /**
-     * / deleteMockTest: only authenticated users (#user) can delete their own mock tests.
-     */
-    deleteMockTest(testId: bigint): Promise<void>;
-    /**
-     * / deleteNote: only authenticated users (#user) can delete their own notes.
-     */
-    deleteNote(noteId: bigint): Promise<void>;
-    /**
-     * / deletePlannerTask: only authenticated users (#user) can delete their own planner tasks.
-     */
-    deletePlannerTask(taskId: bigint): Promise<void>;
-    /**
-     * / deleteQuestion: only authenticated users (#user) can delete their own questions.
-     */
-    deleteQuestion(questionId: bigint): Promise<void>;
-    /**
-     * / deleteReminder: only authenticated users (#user) can delete their own reminders.
-     */
-    deleteReminder(reminderId: bigint): Promise<void>;
-    /**
-     * / deleteTarget: only authenticated users (#user) can delete their own targets.
-     */
-    deleteTarget(targetId: bigint): Promise<void>;
-    /**
-     * / getAchievements: only authenticated users (#user) can view their achievements.
-     */
-    getAchievements(): Promise<Array<UserAchievement>>;
-    /**
-     * / getAllFlashcards: only authenticated users (#user) can view all their flashcards.
-     */
-    getAllFlashcards(): Promise<Array<Flashcard>>;
-    /**
-     * / getAllPlannerTasks: only authenticated users (#user) can view all their planner tasks.
-     */
-    getAllPlannerTasks(): Promise<Array<PlannerTask>>;
-    /**
-     * / getCallerUserProfile: only authenticated users (#user) can call this.
-     */
+    deleteFeedback(feedbackId: bigint): Promise<void>;
     getCallerUserProfile(): Promise<UserProfile | null>;
     getCallerUserRole(): Promise<UserRole>;
-    /**
-     * / getChaptersForSubject: only authenticated users (#user) can view their chapters.
-     */
-    getChaptersForSubject(subjectId: bigint): Promise<Array<Chapter>>;
-    /**
-     * / getFlashcardsForChapter: only authenticated users (#user) can view their flashcards.
-     */
-    getFlashcardsForChapter(chapterId: bigint): Promise<Array<Flashcard>>;
-    /**
-     * / getMockTest: only authenticated users (#user) can view a specific mock test.
-     */
-    getMockTest(testId: bigint): Promise<MockTest | null>;
-    /**
-     * / getMockTests: only authenticated users (#user) can view their mock tests.
-     */
-    getMockTests(): Promise<Array<MockTest>>;
-    /**
-     * / getNotesForChapter: only authenticated users (#user) can view their notes.
-     */
-    getNotesForChapter(chapterId: bigint): Promise<Array<Note>>;
-    /**
-     * / getPendingRevisionTasks: only authenticated users (#user) can view their pending revision tasks.
-     */
-    getPendingRevisionTasks(): Promise<Array<RevisionTask>>;
-    /**
-     * / getPersonalBest: only authenticated users (#user) can view their personal best stats.
-     */
-    getPersonalBest(): Promise<PersonalBest>;
-    /**
-     * / getPlannerTasksForDate: only authenticated users (#user) can view their planner tasks.
-     */
-    getPlannerTasksForDate(date: Time): Promise<Array<PlannerTask>>;
-    /**
-     * / getPlannerTasksForMonth: only authenticated users (#user) can view their planner tasks.
-     */
-    getPlannerTasksForMonth(_year: bigint, _month: bigint): Promise<Array<PlannerTask>>;
-    /**
-     * / getProgressSummary: only authenticated users (#user) can view their progress.
-     */
-    getProgressSummary(): Promise<ProgressSummary>;
-    /**
-     * / getQuestionBank: only authenticated users (#user) can view the question bank.
-     */
-    getQuestionBank(subjectIdFilter: bigint | null, chapterIdFilter: bigint | null): Promise<Array<Question>>;
-    /**
-     * / getQuestionsForChapter: only authenticated users (#user) can view their questions.
-     */
-    getQuestionsForChapter(chapterId: bigint): Promise<Array<Question>>;
-    /**
-     * / getReminders: only authenticated users (#user) can view their reminders.
-     */
-    getReminders(): Promise<Array<Reminder>>;
-    /**
-     * / getRevisionTasks: only authenticated users (#user) can view their revision tasks.
-     */
-    getRevisionTasks(): Promise<Array<RevisionTask>>;
-    /**
-     * / getStudyStreak: only authenticated users (#user) can view their study streak.
-     */
-    getStudyStreak(): Promise<StudyStreak>;
-    /**
-     * / getSubjects: only authenticated users (#user) can view their subjects.
-     */
-    getSubjects(): Promise<Array<Subject>>;
-    /**
-     * / getTargets: only authenticated users (#user) can view their targets.
-     */
-    getTargets(): Promise<Array<Target>>;
-    /**
-     * / getTestAttempts: only authenticated users (#user) can view their test attempts.
-     */
-    getTestAttempts(): Promise<Array<TestAttempt>>;
-    /**
-     * / getTestAttemptsForTest: only authenticated users (#user) can view test attempts for a specific test.
-     */
-    getTestAttemptsForTest(testId: bigint): Promise<Array<TestAttempt>>;
-    /**
-     * / getUserProfile: users can only view their own profile; admins can view any.
-     */
+    getFeedbackById(feedbackId: bigint): Promise<StudentFeedback>;
+    getFeedbackForStudent(student: Principal): Promise<Array<StudentFeedback>>;
+    getFeedbackFromParent(parent: Principal): Promise<Array<StudentFeedback>>;
+    getMessages(user: Principal): Promise<[Array<ChatMessage>, boolean]>;
+    getParentByUsername(username: string): Promise<ParentProfile | null>;
+    getPresence(user: Principal): Promise<PresenceInfo>;
+    getTypingStatus(user: Principal): Promise<boolean>;
     getUserProfile(user: Principal): Promise<UserProfile | null>;
     isCallerAdmin(): Promise<boolean>;
-    /**
-     * / markChapterCompleted: only authenticated users (#user) can update their chapters.
-     * / When a chapter is marked complete, revision tasks are automatically scheduled.
-     */
-    markChapterCompleted(chapterId: bigint, completed: boolean): Promise<void>;
-    /**
-     * / markFlashcardLearned: only authenticated users (#user) can update their own flashcards.
-     */
-    markFlashcardLearned(cardId: bigint, learned: boolean): Promise<void>;
-    /**
-     * / markRevisionTaskCompleted: only authenticated users (#user) can update their own revision tasks.
-     */
-    markRevisionTaskCompleted(revisionId: bigint, completed: boolean): Promise<void>;
-    /**
-     * / recordDailyLogin: only authenticated users (#user) can record their daily login for streak tracking.
-     */
-    recordDailyLogin(): Promise<StudyStreak>;
-    /**
-     * / Register is open to anyone (guests), since users need to register before having a #user role.
-     */
-    register(username: string, name: string, school: string, studentClass: bigint): Promise<void>;
-    /**
-     * / saveCallerUserProfile: only authenticated users (#user) can save their own profile.
-     */
+    markMessagesRead(sender: Principal): Promise<void>;
+    registerParent(username: string, name: string, linkedStudentUsername: string, password: string): Promise<void>;
+    registerStudent(username: string, name: string, school: string, studentClass: bigint, password: string): Promise<void>;
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
-    /**
-     * / submitMockTest: only authenticated users (#user) can submit mock tests.
-     */
-    submitMockTest(testId: bigint, answers: Array<MCQAnswer>, timeTaken: bigint): Promise<TestReport>;
+    sendMessage(recipient: Principal, senderRole: string, content: string): Promise<void>;
+    setTyping(isTyping: boolean): Promise<void>;
+    updateFeedback(feedbackId: bigint, updatedMessage: string, feedbackType: FeedbackType): Promise<void>;
+    updatePresence(isOnline: boolean): Promise<void>;
 }
-import type { MockTest as _MockTest, Note as _Note, RevisionTask as _RevisionTask, Time as _Time, UserProfile as _UserProfile, UserRole as _UserRole } from "./declarations/backend.did.d.ts";
+import type { FeedbackType as _FeedbackType, ParentProfile as _ParentProfile, StudentFeedback as _StudentFeedback, Time as _Time, UserProfile as _UserProfile, UserRole as _UserRole } from "./declarations/backend.did.d.ts";
 export class Backend implements backendInterface {
     constructor(private actor: ActorSubclass<_SERVICE>, private _uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, private _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, private processError?: (error: unknown) => never){}
     async _initializeAccessControlWithSecret(arg0: string): Promise<void> {
@@ -456,325 +177,45 @@ export class Backend implements backendInterface {
             return result;
         }
     }
-    async addChapter(arg0: bigint, arg1: string, arg2: bigint): Promise<bigint> {
+    async addStudentFeedback(arg0: Principal, arg1: string, arg2: FeedbackType): Promise<bigint> {
         if (this.processError) {
             try {
-                const result = await this.actor.addChapter(arg0, arg1, arg2);
+                const result = await this.actor.addStudentFeedback(arg0, arg1, to_candid_FeedbackType_n1(this._uploadFile, this._downloadFile, arg2));
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.addChapter(arg0, arg1, arg2);
-            return result;
-        }
-    }
-    async addFlashcard(arg0: bigint, arg1: bigint, arg2: string, arg3: string): Promise<bigint> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.addFlashcard(arg0, arg1, arg2, arg3);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.addFlashcard(arg0, arg1, arg2, arg3);
-            return result;
-        }
-    }
-    async addNote(arg0: bigint, arg1: string, arg2: string | null): Promise<bigint> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.addNote(arg0, arg1, to_candid_opt_n1(this._uploadFile, this._downloadFile, arg2));
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.addNote(arg0, arg1, to_candid_opt_n1(this._uploadFile, this._downloadFile, arg2));
-            return result;
-        }
-    }
-    async addPlannerTask(arg0: string, arg1: string, arg2: Time, arg3: string): Promise<bigint> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.addPlannerTask(arg0, arg1, arg2, arg3);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.addPlannerTask(arg0, arg1, arg2, arg3);
-            return result;
-        }
-    }
-    async addQuestion(arg0: bigint, arg1: bigint, arg2: string, arg3: string): Promise<bigint> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.addQuestion(arg0, arg1, arg2, arg3);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.addQuestion(arg0, arg1, arg2, arg3);
-            return result;
-        }
-    }
-    async addReminder(arg0: string, arg1: Time): Promise<bigint> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.addReminder(arg0, arg1);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.addReminder(arg0, arg1);
-            return result;
-        }
-    }
-    async addSubject(arg0: string): Promise<bigint> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.addSubject(arg0);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.addSubject(arg0);
-            return result;
-        }
-    }
-    async addTarget(arg0: string, arg1: string, arg2: Time): Promise<bigint> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.addTarget(arg0, arg1, arg2);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.addTarget(arg0, arg1, arg2);
-            return result;
-        }
-    }
-    async adminListUsers(): Promise<Array<Principal>> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.adminListUsers();
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.adminListUsers();
+            const result = await this.actor.addStudentFeedback(arg0, arg1, to_candid_FeedbackType_n1(this._uploadFile, this._downloadFile, arg2));
             return result;
         }
     }
     async assignCallerUserRole(arg0: Principal, arg1: UserRole): Promise<void> {
         if (this.processError) {
             try {
-                const result = await this.actor.assignCallerUserRole(arg0, to_candid_UserRole_n2(this._uploadFile, this._downloadFile, arg1));
+                const result = await this.actor.assignCallerUserRole(arg0, to_candid_UserRole_n3(this._uploadFile, this._downloadFile, arg1));
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.assignCallerUserRole(arg0, to_candid_UserRole_n2(this._uploadFile, this._downloadFile, arg1));
+            const result = await this.actor.assignCallerUserRole(arg0, to_candid_UserRole_n3(this._uploadFile, this._downloadFile, arg1));
             return result;
         }
     }
-    async completePlannerTask(arg0: bigint, arg1: boolean): Promise<void> {
+    async deleteFeedback(arg0: bigint): Promise<void> {
         if (this.processError) {
             try {
-                const result = await this.actor.completePlannerTask(arg0, arg1);
+                const result = await this.actor.deleteFeedback(arg0);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.completePlannerTask(arg0, arg1);
-            return result;
-        }
-    }
-    async completeTarget(arg0: bigint, arg1: boolean): Promise<void> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.completeTarget(arg0, arg1);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.completeTarget(arg0, arg1);
-            return result;
-        }
-    }
-    async createMockTest(arg0: string, arg1: bigint, arg2: Array<MCQQuestion>): Promise<bigint> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.createMockTest(arg0, arg1, arg2);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.createMockTest(arg0, arg1, arg2);
-            return result;
-        }
-    }
-    async deleteFlashcard(arg0: bigint): Promise<void> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.deleteFlashcard(arg0);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.deleteFlashcard(arg0);
-            return result;
-        }
-    }
-    async deleteMockTest(arg0: bigint): Promise<void> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.deleteMockTest(arg0);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.deleteMockTest(arg0);
-            return result;
-        }
-    }
-    async deleteNote(arg0: bigint): Promise<void> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.deleteNote(arg0);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.deleteNote(arg0);
-            return result;
-        }
-    }
-    async deletePlannerTask(arg0: bigint): Promise<void> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.deletePlannerTask(arg0);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.deletePlannerTask(arg0);
-            return result;
-        }
-    }
-    async deleteQuestion(arg0: bigint): Promise<void> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.deleteQuestion(arg0);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.deleteQuestion(arg0);
-            return result;
-        }
-    }
-    async deleteReminder(arg0: bigint): Promise<void> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.deleteReminder(arg0);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.deleteReminder(arg0);
-            return result;
-        }
-    }
-    async deleteTarget(arg0: bigint): Promise<void> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.deleteTarget(arg0);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.deleteTarget(arg0);
-            return result;
-        }
-    }
-    async getAchievements(): Promise<Array<UserAchievement>> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.getAchievements();
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.getAchievements();
-            return result;
-        }
-    }
-    async getAllFlashcards(): Promise<Array<Flashcard>> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.getAllFlashcards();
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.getAllFlashcards();
-            return result;
-        }
-    }
-    async getAllPlannerTasks(): Promise<Array<PlannerTask>> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.getAllPlannerTasks();
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.getAllPlannerTasks();
+            const result = await this.actor.deleteFeedback(arg0);
             return result;
         }
     }
@@ -782,293 +223,131 @@ export class Backend implements backendInterface {
         if (this.processError) {
             try {
                 const result = await this.actor.getCallerUserProfile();
-                return from_candid_opt_n4(this._uploadFile, this._downloadFile, result);
+                return from_candid_opt_n5(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getCallerUserProfile();
-            return from_candid_opt_n4(this._uploadFile, this._downloadFile, result);
+            return from_candid_opt_n5(this._uploadFile, this._downloadFile, result);
         }
     }
     async getCallerUserRole(): Promise<UserRole> {
         if (this.processError) {
             try {
                 const result = await this.actor.getCallerUserRole();
-                return from_candid_UserRole_n5(this._uploadFile, this._downloadFile, result);
+                return from_candid_UserRole_n6(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getCallerUserRole();
-            return from_candid_UserRole_n5(this._uploadFile, this._downloadFile, result);
+            return from_candid_UserRole_n6(this._uploadFile, this._downloadFile, result);
         }
     }
-    async getChaptersForSubject(arg0: bigint): Promise<Array<Chapter>> {
+    async getFeedbackById(arg0: bigint): Promise<StudentFeedback> {
         if (this.processError) {
             try {
-                const result = await this.actor.getChaptersForSubject(arg0);
-                return result;
+                const result = await this.actor.getFeedbackById(arg0);
+                return from_candid_StudentFeedback_n8(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.getChaptersForSubject(arg0);
-            return result;
+            const result = await this.actor.getFeedbackById(arg0);
+            return from_candid_StudentFeedback_n8(this._uploadFile, this._downloadFile, result);
         }
     }
-    async getFlashcardsForChapter(arg0: bigint): Promise<Array<Flashcard>> {
+    async getFeedbackForStudent(arg0: Principal): Promise<Array<StudentFeedback>> {
         if (this.processError) {
             try {
-                const result = await this.actor.getFlashcardsForChapter(arg0);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.getFlashcardsForChapter(arg0);
-            return result;
-        }
-    }
-    async getMockTest(arg0: bigint): Promise<MockTest | null> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.getMockTest(arg0);
-                return from_candid_opt_n7(this._uploadFile, this._downloadFile, result);
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.getMockTest(arg0);
-            return from_candid_opt_n7(this._uploadFile, this._downloadFile, result);
-        }
-    }
-    async getMockTests(): Promise<Array<MockTest>> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.getMockTests();
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.getMockTests();
-            return result;
-        }
-    }
-    async getNotesForChapter(arg0: bigint): Promise<Array<Note>> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.getNotesForChapter(arg0);
-                return from_candid_vec_n8(this._uploadFile, this._downloadFile, result);
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.getNotesForChapter(arg0);
-            return from_candid_vec_n8(this._uploadFile, this._downloadFile, result);
-        }
-    }
-    async getPendingRevisionTasks(): Promise<Array<RevisionTask>> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.getPendingRevisionTasks();
+                const result = await this.actor.getFeedbackForStudent(arg0);
                 return from_candid_vec_n12(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.getPendingRevisionTasks();
+            const result = await this.actor.getFeedbackForStudent(arg0);
             return from_candid_vec_n12(this._uploadFile, this._downloadFile, result);
         }
     }
-    async getPersonalBest(): Promise<PersonalBest> {
+    async getFeedbackFromParent(arg0: Principal): Promise<Array<StudentFeedback>> {
         if (this.processError) {
             try {
-                const result = await this.actor.getPersonalBest();
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.getPersonalBest();
-            return result;
-        }
-    }
-    async getPlannerTasksForDate(arg0: Time): Promise<Array<PlannerTask>> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.getPlannerTasksForDate(arg0);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.getPlannerTasksForDate(arg0);
-            return result;
-        }
-    }
-    async getPlannerTasksForMonth(arg0: bigint, arg1: bigint): Promise<Array<PlannerTask>> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.getPlannerTasksForMonth(arg0, arg1);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.getPlannerTasksForMonth(arg0, arg1);
-            return result;
-        }
-    }
-    async getProgressSummary(): Promise<ProgressSummary> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.getProgressSummary();
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.getProgressSummary();
-            return result;
-        }
-    }
-    async getQuestionBank(arg0: bigint | null, arg1: bigint | null): Promise<Array<Question>> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.getQuestionBank(to_candid_opt_n16(this._uploadFile, this._downloadFile, arg0), to_candid_opt_n16(this._uploadFile, this._downloadFile, arg1));
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.getQuestionBank(to_candid_opt_n16(this._uploadFile, this._downloadFile, arg0), to_candid_opt_n16(this._uploadFile, this._downloadFile, arg1));
-            return result;
-        }
-    }
-    async getQuestionsForChapter(arg0: bigint): Promise<Array<Question>> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.getQuestionsForChapter(arg0);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.getQuestionsForChapter(arg0);
-            return result;
-        }
-    }
-    async getReminders(): Promise<Array<Reminder>> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.getReminders();
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.getReminders();
-            return result;
-        }
-    }
-    async getRevisionTasks(): Promise<Array<RevisionTask>> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.getRevisionTasks();
+                const result = await this.actor.getFeedbackFromParent(arg0);
                 return from_candid_vec_n12(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.getRevisionTasks();
+            const result = await this.actor.getFeedbackFromParent(arg0);
             return from_candid_vec_n12(this._uploadFile, this._downloadFile, result);
         }
     }
-    async getStudyStreak(): Promise<StudyStreak> {
+    async getMessages(arg0: Principal): Promise<[Array<ChatMessage>, boolean]> {
         if (this.processError) {
             try {
-                const result = await this.actor.getStudyStreak();
+                const result = await this.actor.getMessages(arg0);
+                return [
+                    result[0],
+                    result[1]
+                ];
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getMessages(arg0);
+            return [
+                result[0],
+                result[1]
+            ];
+        }
+    }
+    async getParentByUsername(arg0: string): Promise<ParentProfile | null> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getParentByUsername(arg0);
+                return from_candid_opt_n13(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getParentByUsername(arg0);
+            return from_candid_opt_n13(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async getPresence(arg0: Principal): Promise<PresenceInfo> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getPresence(arg0);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.getStudyStreak();
+            const result = await this.actor.getPresence(arg0);
             return result;
         }
     }
-    async getSubjects(): Promise<Array<Subject>> {
+    async getTypingStatus(arg0: Principal): Promise<boolean> {
         if (this.processError) {
             try {
-                const result = await this.actor.getSubjects();
+                const result = await this.actor.getTypingStatus(arg0);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.getSubjects();
-            return result;
-        }
-    }
-    async getTargets(): Promise<Array<Target>> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.getTargets();
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.getTargets();
-            return result;
-        }
-    }
-    async getTestAttempts(): Promise<Array<TestAttempt>> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.getTestAttempts();
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.getTestAttempts();
-            return result;
-        }
-    }
-    async getTestAttemptsForTest(arg0: bigint): Promise<Array<TestAttempt>> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.getTestAttemptsForTest(arg0);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.getTestAttemptsForTest(arg0);
+            const result = await this.actor.getTypingStatus(arg0);
             return result;
         }
     }
@@ -1076,14 +355,14 @@ export class Backend implements backendInterface {
         if (this.processError) {
             try {
                 const result = await this.actor.getUserProfile(arg0);
-                return from_candid_opt_n4(this._uploadFile, this._downloadFile, result);
+                return from_candid_opt_n5(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getUserProfile(arg0);
-            return from_candid_opt_n4(this._uploadFile, this._downloadFile, result);
+            return from_candid_opt_n5(this._uploadFile, this._downloadFile, result);
         }
     }
     async isCallerAdmin(): Promise<boolean> {
@@ -1100,73 +379,45 @@ export class Backend implements backendInterface {
             return result;
         }
     }
-    async markChapterCompleted(arg0: bigint, arg1: boolean): Promise<void> {
+    async markMessagesRead(arg0: Principal): Promise<void> {
         if (this.processError) {
             try {
-                const result = await this.actor.markChapterCompleted(arg0, arg1);
+                const result = await this.actor.markMessagesRead(arg0);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.markChapterCompleted(arg0, arg1);
+            const result = await this.actor.markMessagesRead(arg0);
             return result;
         }
     }
-    async markFlashcardLearned(arg0: bigint, arg1: boolean): Promise<void> {
+    async registerParent(arg0: string, arg1: string, arg2: string, arg3: string): Promise<void> {
         if (this.processError) {
             try {
-                const result = await this.actor.markFlashcardLearned(arg0, arg1);
+                const result = await this.actor.registerParent(arg0, arg1, arg2, arg3);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.markFlashcardLearned(arg0, arg1);
+            const result = await this.actor.registerParent(arg0, arg1, arg2, arg3);
             return result;
         }
     }
-    async markRevisionTaskCompleted(arg0: bigint, arg1: boolean): Promise<void> {
+    async registerStudent(arg0: string, arg1: string, arg2: string, arg3: bigint, arg4: string): Promise<void> {
         if (this.processError) {
             try {
-                const result = await this.actor.markRevisionTaskCompleted(arg0, arg1);
+                const result = await this.actor.registerStudent(arg0, arg1, arg2, arg3, arg4);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.markRevisionTaskCompleted(arg0, arg1);
-            return result;
-        }
-    }
-    async recordDailyLogin(): Promise<StudyStreak> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.recordDailyLogin();
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.recordDailyLogin();
-            return result;
-        }
-    }
-    async register(arg0: string, arg1: string, arg2: string, arg3: bigint): Promise<void> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.register(arg0, arg1, arg2, arg3);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.register(arg0, arg1, arg2, arg3);
+            const result = await this.actor.registerStudent(arg0, arg1, arg2, arg3, arg4);
             return result;
         }
     }
@@ -1184,91 +435,112 @@ export class Backend implements backendInterface {
             return result;
         }
     }
-    async submitMockTest(arg0: bigint, arg1: Array<MCQAnswer>, arg2: bigint): Promise<TestReport> {
+    async sendMessage(arg0: Principal, arg1: string, arg2: string): Promise<void> {
         if (this.processError) {
             try {
-                const result = await this.actor.submitMockTest(arg0, arg1, arg2);
+                const result = await this.actor.sendMessage(arg0, arg1, arg2);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.submitMockTest(arg0, arg1, arg2);
+            const result = await this.actor.sendMessage(arg0, arg1, arg2);
+            return result;
+        }
+    }
+    async setTyping(arg0: boolean): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.setTyping(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.setTyping(arg0);
+            return result;
+        }
+    }
+    async updateFeedback(arg0: bigint, arg1: string, arg2: FeedbackType): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.updateFeedback(arg0, arg1, to_candid_FeedbackType_n1(this._uploadFile, this._downloadFile, arg2));
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.updateFeedback(arg0, arg1, to_candid_FeedbackType_n1(this._uploadFile, this._downloadFile, arg2));
+            return result;
+        }
+    }
+    async updatePresence(arg0: boolean): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.updatePresence(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.updatePresence(arg0);
             return result;
         }
     }
 }
-function from_candid_Note_n9(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _Note): Note {
-    return from_candid_record_n10(_uploadFile, _downloadFile, value);
+function from_candid_FeedbackType_n10(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _FeedbackType): FeedbackType {
+    return from_candid_variant_n11(_uploadFile, _downloadFile, value);
 }
-function from_candid_RevisionTask_n13(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _RevisionTask): RevisionTask {
-    return from_candid_record_n14(_uploadFile, _downloadFile, value);
+function from_candid_StudentFeedback_n8(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _StudentFeedback): StudentFeedback {
+    return from_candid_record_n9(_uploadFile, _downloadFile, value);
 }
-function from_candid_UserRole_n5(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _UserRole): UserRole {
-    return from_candid_variant_n6(_uploadFile, _downloadFile, value);
+function from_candid_UserRole_n6(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _UserRole): UserRole {
+    return from_candid_variant_n7(_uploadFile, _downloadFile, value);
 }
-function from_candid_opt_n11(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [string]): string | null {
+function from_candid_opt_n13(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_ParentProfile]): ParentProfile | null {
     return value.length === 0 ? null : value[0];
 }
-function from_candid_opt_n15(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [bigint]): bigint | null {
+function from_candid_opt_n5(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_UserProfile]): UserProfile | null {
     return value.length === 0 ? null : value[0];
 }
-function from_candid_opt_n4(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_UserProfile]): UserProfile | null {
-    return value.length === 0 ? null : value[0];
-}
-function from_candid_opt_n7(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_MockTest]): MockTest | null {
-    return value.length === 0 ? null : value[0];
-}
-function from_candid_record_n10(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+function from_candid_record_n9(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
     id: bigint;
-    content: string;
-    imageData: [] | [string];
     createdAt: _Time;
-    chapterId: bigint;
+    feedbackType: _FeedbackType;
+    message: string;
+    student: Principal;
+    parent: Principal;
 }): {
     id: bigint;
-    content: string;
-    imageData?: string;
     createdAt: Time;
-    chapterId: bigint;
+    feedbackType: FeedbackType;
+    message: string;
+    student: Principal;
+    parent: Principal;
 } {
     return {
         id: value.id,
-        content: value.content,
-        imageData: record_opt_to_undefined(from_candid_opt_n11(_uploadFile, _downloadFile, value.imageData)),
         createdAt: value.createdAt,
-        chapterId: value.chapterId
+        feedbackType: from_candid_FeedbackType_n10(_uploadFile, _downloadFile, value.feedbackType),
+        message: value.message,
+        student: value.student,
+        parent: value.parent
     };
 }
-function from_candid_record_n14(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
-    id: bigint;
-    plannerTaskId: [] | [bigint];
-    completed: boolean;
-    dueDate: _Time;
-    chapterId: bigint;
-    subjectId: bigint;
-    revisionNumber: bigint;
-}): {
-    id: bigint;
-    plannerTaskId?: bigint;
-    completed: boolean;
-    dueDate: Time;
-    chapterId: bigint;
-    subjectId: bigint;
-    revisionNumber: bigint;
-} {
-    return {
-        id: value.id,
-        plannerTaskId: record_opt_to_undefined(from_candid_opt_n15(_uploadFile, _downloadFile, value.plannerTaskId)),
-        completed: value.completed,
-        dueDate: value.dueDate,
-        chapterId: value.chapterId,
-        subjectId: value.subjectId,
-        revisionNumber: value.revisionNumber
-    };
+function from_candid_variant_n11(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    appreciate: null;
+} | {
+    scold: null;
+} | {
+    comment: null;
+}): FeedbackType {
+    return "appreciate" in value ? FeedbackType.appreciate : "scold" in value ? FeedbackType.scold : "comment" in value ? FeedbackType.comment : value;
 }
-function from_candid_variant_n6(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+function from_candid_variant_n7(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
     admin: null;
 } | {
     user: null;
@@ -1277,22 +549,31 @@ function from_candid_variant_n6(_uploadFile: (file: ExternalBlob) => Promise<Uin
 }): UserRole {
     return "admin" in value ? UserRole.admin : "user" in value ? UserRole.user : "guest" in value ? UserRole.guest : value;
 }
-function from_candid_vec_n12(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Array<_RevisionTask>): Array<RevisionTask> {
-    return value.map((x)=>from_candid_RevisionTask_n13(_uploadFile, _downloadFile, x));
+function from_candid_vec_n12(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Array<_StudentFeedback>): Array<StudentFeedback> {
+    return value.map((x)=>from_candid_StudentFeedback_n8(_uploadFile, _downloadFile, x));
 }
-function from_candid_vec_n8(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Array<_Note>): Array<Note> {
-    return value.map((x)=>from_candid_Note_n9(_uploadFile, _downloadFile, x));
+function to_candid_FeedbackType_n1(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: FeedbackType): _FeedbackType {
+    return to_candid_variant_n2(_uploadFile, _downloadFile, value);
 }
-function to_candid_UserRole_n2(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: UserRole): _UserRole {
-    return to_candid_variant_n3(_uploadFile, _downloadFile, value);
+function to_candid_UserRole_n3(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: UserRole): _UserRole {
+    return to_candid_variant_n4(_uploadFile, _downloadFile, value);
 }
-function to_candid_opt_n1(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: string | null): [] | [string] {
-    return value === null ? candid_none() : candid_some(value);
+function to_candid_variant_n2(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: FeedbackType): {
+    appreciate: null;
+} | {
+    scold: null;
+} | {
+    comment: null;
+} {
+    return value == FeedbackType.appreciate ? {
+        appreciate: null
+    } : value == FeedbackType.scold ? {
+        scold: null
+    } : value == FeedbackType.comment ? {
+        comment: null
+    } : value;
 }
-function to_candid_opt_n16(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: bigint | null): [] | [bigint] {
-    return value === null ? candid_none() : candid_some(value);
-}
-function to_candid_variant_n3(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: UserRole): {
+function to_candid_variant_n4(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: UserRole): {
     admin: null;
 } | {
     user: null;
