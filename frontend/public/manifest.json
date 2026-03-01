@@ -12,8 +12,8 @@
   "categories": ["education", "productivity"],
   "icons": [
     {
-      "src": "/assets/generated/board-saathi-apple-touch.dim_180x180.png",
-      "sizes": "180x180",
+      "src": "/assets/generated/favicon.dim_32x32.png",
+      "sizes": "32x32",
       "type": "image/png",
       "purpose": "any"
     },
@@ -30,7 +30,7 @@
       "purpose": "any"
     },
     {
-      "src": "/assets/generated/app-icon-maskable-512.dim_512x512.png",
+      "src": "/assets/generated/app-icon-maskable.dim_512x512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

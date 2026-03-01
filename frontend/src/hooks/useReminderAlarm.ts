@@ -1,4 +1,6 @@
 // Hook for playing alarm sounds at reminder time
+// Alarm sound file paths (also listed in public/sw.js PRECACHE_URLS for offline support):
+//   - /assets/sounds/joshsound.mp3
 import { useCallback, useRef } from 'react';
 
 // Map of sound identifiers to their file paths

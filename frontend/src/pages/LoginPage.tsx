@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
-import { Eye, EyeOff, User, Lock, School, GraduationCap, UserPlus, LogIn, X, Users, ShieldCheck } from 'lucide-react';
+import { Eye, EyeOff, User, Lock, School, GraduationCap, UserPlus, LogIn, Users, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -61,6 +61,7 @@ export default function LoginPage() {
   // Parent register dialog
   const [parentRegisterOpen, setParentRegisterOpen] = useState(false);
   const [parentRegUsername, setParentRegUsername] = useState('');
+  const [parentRegName, setParentRegName] = useState('');
   const [parentRegChildUsername, setParentRegChildUsername] = useState('');
   const [parentRegChildPassword, setParentRegChildPassword] = useState('');
   const [showParentRegPassword, setShowParentRegPassword] = useState(false);
@@ -162,7 +163,7 @@ export default function LoginPage() {
   const handleParentLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!parentLoginUsername.trim() || !parentLoginPassword.trim()) {
-      toast.error('Please enter your username and your child\'s password');
+      toast.error("Please enter your username and your child's password");
       return;
     }
     setParentLoginLoading(true);
@@ -194,7 +195,6 @@ export default function LoginPage() {
       );
       toast.success('Parent account created! You can now log in.');
       setParentRegisterOpen(false);
-      // Pre-fill parent login
       setParentLoginUsername(parentRegUsername.trim());
       setParentLoginOpen(true);
     } catch (err: unknown) {
@@ -226,7 +226,6 @@ export default function LoginPage() {
 
         <Card className="shadow-xl border-border/50">
           <CardHeader className="pb-2">
-            {/* Mode tabs */}
             <div className="flex rounded-lg bg-muted p-1 gap-1">
               <button
                 onClick={() => setMode('login')}
@@ -292,7 +291,10 @@ export default function LoginPage() {
                 </div>
                 <Button type="submit" className="w-full" disabled={loading}>
                   {loading ? (
-                    <span className="flex items-center gap-2"><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Logging in...</span>
+                    <span className="flex items-center gap-2">
+                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Logging in...
+                    </span>
                   ) : (
                     <span className="flex items-center gap-2"><LogIn className="w-4 h-4" />Login</span>
                   )}
@@ -387,7 +389,10 @@ export default function LoginPage() {
                 </div>
                 <Button type="submit" className="w-full" disabled={loading}>
                   {loading ? (
-                    <span className="flex items-center gap-2"><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Creating...</span>
+                    <span className="flex items-center gap-2">
+                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Creating...
+                    </span>
                   ) : (
                     <span className="flex items-center gap-2"><UserPlus className="w-4 h-4" />Create Account</span>
                   )}
@@ -405,12 +410,11 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Guest mode */}
             <Button variant="outline" className="w-full mb-3" onClick={handleGuestMode}>
               Continue as Guest
             </Button>
 
-            {/* Parent Portal Divider */}
+            {/* Parent Portal */}
             <div className="relative my-4">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-border" />
@@ -420,7 +424,6 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Parent buttons */}
             <div className="space-y-2">
               <Button
                 variant="outline"
@@ -445,7 +448,7 @@ export default function LoginPage() {
         <p className="text-center text-xs text-muted-foreground mt-6">
           Built with ❤️ using{' '}
           <a
-            href={`https://caffeine.ai/?utm_source=Caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname)}`}
+            href={`https://caffeine.ai/?utm_source=Caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname || 'board-saathi')}`}
             target="_blank"
             rel="noopener noreferrer"
             className="text-primary hover:underline"
@@ -459,75 +462,73 @@ export default function LoginPage() {
       <Dialog open={forgotOpen} onOpenChange={open => { setForgotOpen(open); if (!open) { setForgotSchool(''); setForgotResults([]); setForgotSearched(false); setResetUsername(''); setResetNewPassword(''); setResetDone(false); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Forgot Password</DialogTitle>
-            <DialogDescription>Find your account by school name and reset your password.</DialogDescription>
+            <DialogTitle>Reset Password</DialogTitle>
+            <DialogDescription>Find your account by school name, then reset your password.</DialogDescription>
           </DialogHeader>
-          {!resetDone ? (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>School Name</Label>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Enter your school name"
-                    value={forgotSchool}
-                    onChange={e => setForgotSchool(e.target.value)}
-                  />
-                  <Button type="button" onClick={handleForgotSearch} size="sm">Search</Button>
-                </div>
-              </div>
-              {forgotSearched && (
+          <div className="space-y-4">
+            {!resetDone ? (
+              <>
                 <div className="space-y-2">
-                  {forgotResults.length === 0 ? (
+                  <Label>School Name</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Enter your school name"
+                      value={forgotSchool}
+                      onChange={e => setForgotSchool(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleForgotSearch()}
+                    />
+                    <Button onClick={handleForgotSearch} size="sm">Search</Button>
+                  </div>
+                </div>
+                {forgotSearched && (
+                  forgotResults.length === 0 ? (
                     <p className="text-sm text-muted-foreground">No accounts found for this school.</p>
                   ) : (
-                    <>
-                      <Label>Select your account</Label>
+                    <div className="space-y-2">
+                      <Label>Select Account</Label>
                       <div className="space-y-1 max-h-40 overflow-y-auto">
                         {forgotResults.map(acc => (
                           <button
-                            key={acc.username}
+                            key={acc.userId}
                             onClick={() => setResetUsername(acc.username)}
-                            className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all ${
+                            className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
                               resetUsername === acc.username
                                 ? 'bg-primary text-primary-foreground'
-                                : 'bg-muted hover:bg-muted/80'
+                                : 'hover:bg-muted'
                             }`}
                           >
-                            <span className="font-medium">{acc.name}</span>
-                            <span className="text-xs ml-2 opacity-70">@{acc.username}</span>
+                            {acc.name} (@{acc.username})
                           </button>
                         ))}
                       </div>
-                      {resetUsername && (
-                        <div className="space-y-2 pt-2">
-                          <Label>New Password</Label>
-                          <Input
-                            type="password"
-                            placeholder="Enter new password (min. 4 chars)"
-                            value={resetNewPassword}
-                            onChange={e => setResetNewPassword(e.target.value)}
-                          />
-                          <Button onClick={handlePasswordReset} className="w-full">Reset Password</Button>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="text-center py-4">
-              <div className="text-4xl mb-3">✅</div>
-              <p className="font-medium">Password reset successfully!</p>
-              <p className="text-sm text-muted-foreground mt-1">You can now login with your new password.</p>
-              <Button className="mt-4 w-full" onClick={() => setForgotOpen(false)}>Close</Button>
-            </div>
-          )}
+                    </div>
+                  )
+                )}
+                {resetUsername && (
+                  <div className="space-y-2">
+                    <Label>New Password</Label>
+                    <Input
+                      type="password"
+                      placeholder="Min. 4 characters"
+                      value={resetNewPassword}
+                      onChange={e => setResetNewPassword(e.target.value)}
+                    />
+                    <Button onClick={handlePasswordReset} className="w-full">Reset Password</Button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-center py-4">
+                <p className="text-green-600 font-medium">Password reset successfully!</p>
+                <Button className="mt-3" onClick={() => setForgotOpen(false)}>Close</Button>
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 
       {/* Parent Login Dialog */}
-      <Dialog open={parentLoginOpen} onOpenChange={open => { setParentLoginOpen(open); if (!open) { setParentLoginUsername(''); setParentLoginPassword(''); } }}>
+      <Dialog open={parentLoginOpen} onOpenChange={setParentLoginOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -535,31 +536,32 @@ export default function LoginPage() {
               Parent Login
             </DialogTitle>
             <DialogDescription>
-              Enter your parent username and your child's password to access the parent portal.
+              Enter your parent username and your child&apos;s password to access the parent dashboard.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleParentLogin} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="parent-login-username">Parent Username</Label>
               <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   id="parent-login-username"
                   placeholder="Your parent username"
                   value={parentLoginUsername}
                   onChange={e => setParentLoginUsername(e.target.value)}
                   className="pl-9"
+                  autoComplete="username"
                 />
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="parent-login-password">Child's Password</Label>
+              <Label htmlFor="parent-login-password">Child&apos;s Password</Label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   id="parent-login-password"
                   type={showParentLoginPassword ? 'text' : 'password'}
-                  placeholder="Your child's account password"
+                  placeholder="Your child's password"
                   value={parentLoginPassword}
                   onChange={e => setParentLoginPassword(e.target.value)}
                   className="pl-9 pr-10"
@@ -573,15 +575,18 @@ export default function LoginPage() {
                 </button>
               </div>
             </div>
-            <Button type="submit" className="w-full bg-amber-600 hover:bg-amber-700 text-white" disabled={parentLoginLoading}>
+            <Button type="submit" className="w-full" disabled={parentLoginLoading}>
               {parentLoginLoading ? (
-                <span className="flex items-center gap-2"><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Logging in...</span>
+                <span className="flex items-center gap-2">
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Logging in...
+                </span>
               ) : (
                 <span className="flex items-center gap-2"><LogIn className="w-4 h-4" />Login as Parent</span>
               )}
             </Button>
             <p className="text-xs text-center text-muted-foreground">
-              Don't have a parent account?{' '}
+              Don&apos;t have a parent account?{' '}
               <button
                 type="button"
                 className="text-primary hover:underline"
@@ -595,7 +600,7 @@ export default function LoginPage() {
       </Dialog>
 
       {/* Parent Register Dialog */}
-      <Dialog open={parentRegisterOpen} onOpenChange={open => { setParentRegisterOpen(open); if (!open) { setParentRegUsername(''); setParentRegChildUsername(''); setParentRegChildPassword(''); } }}>
+      <Dialog open={parentRegisterOpen} onOpenChange={setParentRegisterOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -603,17 +608,17 @@ export default function LoginPage() {
               Create Parent Account
             </DialogTitle>
             <DialogDescription>
-              Link your account to your child's Board Saathi account using their username and password.
+              Create a parent account linked to your child&apos;s student account.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleParentRegister} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="parent-reg-username">Your Parent Username</Label>
+              <Label htmlFor="parent-reg-username">Parent Username</Label>
               <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   id="parent-reg-username"
-                  placeholder="Choose a username for yourself"
+                  placeholder="Choose a parent username"
                   value={parentRegUsername}
                   onChange={e => setParentRegUsername(e.target.value)}
                   className="pl-9"
@@ -621,12 +626,25 @@ export default function LoginPage() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="parent-reg-child-username">Child's Username</Label>
+              <Label htmlFor="parent-reg-name">Your Name</Label>
               <div className="relative">
-                <GraduationCap className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  id="parent-reg-name"
+                  placeholder="Your full name"
+                  value={parentRegName}
+                  onChange={e => setParentRegName(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="parent-reg-child-username">Child&apos;s Username</Label>
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   id="parent-reg-child-username"
-                  placeholder="Your child's Board Saathi username"
+                  placeholder="Your child's username"
                   value={parentRegChildUsername}
                   onChange={e => setParentRegChildUsername(e.target.value)}
                   className="pl-9"
@@ -634,13 +652,13 @@ export default function LoginPage() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="parent-reg-child-password">Child's Password</Label>
+              <Label htmlFor="parent-reg-child-password">Child&apos;s Password</Label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   id="parent-reg-child-password"
                   type={showParentRegPassword ? 'text' : 'password'}
-                  placeholder="Your child's account password"
+                  placeholder="Your child's password (for verification)"
                   value={parentRegChildPassword}
                   onChange={e => setParentRegChildPassword(e.target.value)}
                   className="pl-9 pr-10"
@@ -653,25 +671,17 @@ export default function LoginPage() {
                   {showParentRegPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-              <p className="text-xs text-muted-foreground">Ask your child for their Board Saathi password.</p>
             </div>
-            <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white" disabled={parentRegLoading}>
+            <Button type="submit" className="w-full" disabled={parentRegLoading}>
               {parentRegLoading ? (
-                <span className="flex items-center gap-2"><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Creating...</span>
+                <span className="flex items-center gap-2">
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Creating...
+                </span>
               ) : (
                 <span className="flex items-center gap-2"><ShieldCheck className="w-4 h-4" />Create Parent Account</span>
               )}
             </Button>
-            <p className="text-xs text-center text-muted-foreground">
-              Already have a parent account?{' '}
-              <button
-                type="button"
-                className="text-primary hover:underline"
-                onClick={() => { setParentRegisterOpen(false); setParentLoginOpen(true); }}
-              >
-                Login here
-              </button>
-            </p>
           </form>
         </DialogContent>
       </Dialog>

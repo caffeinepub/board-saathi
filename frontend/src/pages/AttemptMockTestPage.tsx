@@ -17,6 +17,7 @@ export default function AttemptMockTestPage() {
   const submitMutation = useSubmitMockTest();
 
   const [currentIndex, setCurrentIndex] = useState(0);
+  // answers: Record<questionId, selectedOptionIndex>
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [elapsed, setElapsed] = useState(0);
   const [submitted, setSubmitted] = useState(false);
@@ -41,15 +42,10 @@ export default function AttemptMockTestPage() {
     if (!test) return;
     if (timerRef.current) clearInterval(timerRef.current);
 
-    const answerList = test.questions.map(q => ({
-      questionId: q.id,
-      selectedOption: answers[q.id] ?? 999,
-    }));
-
     try {
       const report = await submitMutation.mutateAsync({
         testId: testIdNum,
-        answers: answerList,
+        answers, // Record<number, number> — matches useSubmitMockTest signature
         timeTaken: elapsed,
       });
       setSubmitted(true);
@@ -102,7 +98,7 @@ export default function AttemptMockTestPage() {
       <Card className="mb-6">
         <CardContent className="p-5">
           <div className="flex items-start gap-3 mb-4">
-            <Badge variant="outline" className="flex-shrink-0 mt-0.5">Q{currentIndex + 1}</Badge>
+            <Badge variant="outline" className="shrink-0 mt-0.5">Q{currentIndex + 1}</Badge>
             <p className="font-medium text-sm leading-relaxed">{currentQuestion.questionText}</p>
           </div>
           <div className="space-y-2">

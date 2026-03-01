@@ -1,111 +1,127 @@
 {
   "kind": "implementation_plan",
   "version": "1.0",
-  "title": "Add Parent Portal: Login, Dashboard, Child Progress View & Comment System",
+  "title": "Homepage enhancements, timer page, bottom nav bar, and motivational target widget",
   "requirements": [
     {
       "id": "REQ-1",
-      "summary": "Add parent account management to localStorage with parent-child linking and separate session handling",
+      "summary": "Display a 'Days Left to End of Month' countdown banner at the very top of the homepage (Dashboard)",
       "acceptanceCriteria": [
-        "Parent account creation stores parentUsername and childUsername with child's hashed password as credential",
-        "parentLogin() validates parentUsername + childPassword against the linked student's stored password",
-        "If childPassword does not match the linked student's password, login fails with an error message",
-        "getLinkedChildData() returns all student data namespaced under the child's username from localStorage",
-        "Parent session is stored separately from student session so both can coexist without collision"
+        "The days-left count is shown at the top of the Dashboard page",
+        "The number updates correctly as the date changes",
+        "The banner is visually distinct and easy to read"
       ],
       "file_operations": [
         {
-          "path": "frontend/src/utils/localStorageService.ts",
+          "path": "frontend/src/pages/Dashboard.tsx",
           "operation": "modify",
-          "description": "Add parent account storage structure with fields { parentUsername, passwordHash, childUsername }. Implement createParentAccount() to validate child account exists and password matches before creating parent entry. Add parentLogin() to authenticate by validating parentUsername and childPassword against the linked student's stored password hash. Implement getParentSession(), setParentSession(), and clearParentSession() using a separate sessionStorage key ('parentSession') to avoid collision with student session ('userSession'). Add getLinkedChildData(parentUsername) that retrieves the parent record, extracts childUsername, and returns the complete child profile and all namespaced data (subjects, chapters, notes, questions, mockTests with attempts, flashcards with learned status, questionBank, plannerTasks, targets, studyStreak, revisionTasks, reminders, progressSummary). Ensure all parent-related functions throw descriptive errors for invalid credentials or missing child accounts."
+          "description": "Add a countdown banner component at the top of the Dashboard that calculates and displays the number of days remaining in the current calendar month. Use JavaScript Date API to compute days left (e.g., days in month minus current day). Style the banner to be visually prominent with appropriate spacing and typography."
         }
       ]
     },
     {
       "id": "REQ-2",
-      "summary": "Add parent login and registration UI to the LoginPage with modal dialogs for authentication",
+      "summary": "On the homepage (Dashboard), show a section that lists the user's upcoming reminders and active targets",
       "acceptanceCriteria": [
-        "'Login as Parent' and 'Create Parent Account' buttons are visible on the login page below the student auth options",
-        "'Create Parent Account' dialog collects Parent Username, Child's Username, and Child's Password",
-        "If child username does not exist or password is wrong, show a clear error message",
-        "On successful parent login, user is redirected to the Parent Dashboard page",
-        "Parent auth state is tracked separately from student auth state"
+        "Reminders and targets added by the user appear on the homepage",
+        "Each item shows its title and due date/time",
+        "Section updates reactively when items are added or removed"
       ],
       "file_operations": [
         {
-          "path": "frontend/src/pages/LoginPage.tsx",
+          "path": "frontend/src/pages/Dashboard.tsx",
           "operation": "modify",
-          "description": "Add two new buttons below the existing student login/register buttons: 'Login as Parent' and 'Create Parent Account'. Implement 'Create Parent Account' dialog using shadcn/ui Dialog component with Input fields for Parent Username, Child's Username, and Child's Password. On submission, call createParentAccount() from localStorageService and handle errors (child not found, password mismatch) with clear toast/alert messages. Implement 'Login as Parent' dialog with fields for Parent Username and Child's Password. On successful parentLogin(), call setParentSession() and use useNavigate() to redirect to '/parent-dashboard'. Add state management for dialog visibility and form validation. Style dialogs consistently with existing login/register UI using Tailwind classes."
+          "description": "Add a new section below existing dashboard content that displays upcoming reminders and active targets. Use existing useGetReminders and useGetTargets hooks from frontend/src/hooks/useQueries.ts to fetch data from localStorage. Filter to show only incomplete/future items. Display each item with its title, deadline/time, and status. Ensure the section updates reactively when the underlying data changes."
         }
       ]
     },
     {
       "id": "REQ-3",
-      "summary": "Create Parent Dashboard page with personalized child data display, performance summary, and comment system",
+      "summary": "Add a calendar-clock icon button in the top-right area of the homepage header, positioned beside the existing message icon",
       "acceptanceCriteria": [
-        "Parent dashboard route /parent-dashboard is accessible only when a parent session is active; redirects to login otherwise",
-        "Parent username is displayed at top of page; child's name is displayed directly beneath it",
-        "All section headings and descriptions use 'Your son/daughter [Name]' phrasing",
-        "Overall performance card shows chapter completion %, average mock test score, current streak, and targets met",
-        "Subjects section lists all child's subjects with chapter count and completion percentage",
-        "Mock Tests section shows each test with Attempted/Not Attempted status, attempt count, and best score",
-        "Flashcards section shows total count and per-card flip/review count",
-        "Question Bank section shows all questions grouped by subject/chapter",
-        "Comment box is prominently placed with Scold/Comment/Appreciate buttons that pre-fill textarea tone prefix",
-        "Send button is disabled when textarea is empty"
+        "A calendar-clock icon is visible in the top-right header beside the message icon",
+        "Tapping the icon navigates to the Timer page",
+        "The icon is accessible on all screen sizes"
       ],
       "file_operations": [
         {
-          "path": "frontend/src/pages/ParentDashboard.tsx",
-          "operation": "create",
-          "description": "Create a new Parent Dashboard page component. At the top, display parent username from getParentSession() and child's name from getLinkedChildData() with labels 'Parent: [parentUsername]' and 'Viewing: [Child's Name]'. Use personalized phrasing 'Your son/daughter [Name]' throughout (default to 'child' if gender not stored). Implement sections: (1) Overall Performance card with chapter completion percentage (completedChapters/totalChapters), average mock test score from test attempts, current streak from studyStreak, and targets achieved count. (2) Subjects grid showing each subject with chapter count and completion bars. (3) Notes section listing note counts per subject/chapter with expandable note titles. (4) Questions section showing question counts per chapter. (5) Mock Tests table with columns: Test Name, Subject, Status (Attempted/Not Attempted based on testAttempts), Attempt Count, Best Score. (6) Flashcards section showing total count and per-card learned/review stats. (7) Question Bank table grouped by subject/chapter with question text preview. (8) Comment Box prominently centered with heading 'Send feedback to [Child's Name]', three styled buttons ('Scold 😠' in red, 'Comment 💬' in blue, 'Appreciate 🌟' in green) that pre-fill textarea with tone prefix ('⚠️ [Scold]: ', '💬 [Comment]: ', '🌟 [Appreciate]: '). Add textarea for message and Send button (disabled when empty). On Send, call addNotification() targeting child's username with notification object { id: Date.now(), from: parentUsername, type, message, timestamp: Date.now(), read: false }, clear textarea, and show success toast. Use shadcn/ui Card, Table, Badge, Button, Textarea components. Fetch all data via getLinkedChildData() on mount. Style with Tailwind using gradient headers and responsive grid layouts."
+          "path": "frontend/src/pages/Dashboard.tsx",
+          "operation": "modify",
+          "description": "Add a calendar-clock icon button in the top-right header section of the Dashboard page, positioned next to the existing message navigation button. Use lucide-react icons (CalendarClock). Wire the button to navigate to the '/timer' route using TanStack Router's Link or useNavigate. Ensure the icon is responsive and accessible."
         }
       ]
     },
     {
       "id": "REQ-4",
-      "summary": "Implement notification system in localStorage and add notification bell to student Layout",
+      "summary": "Create a new Timer/Countdown page with add, display, and delete functionality for multiple timers",
       "acceptanceCriteria": [
-        "Sending a comment from the parent dashboard writes a notification entry to the child's localStorage namespace",
-        "Student Layout shows a bell icon in the header/sidebar with a red badge showing unread notification count",
-        "Badge disappears or shows 0 when all notifications are read",
-        "Notification panel lists each message with sender, type (Scold/Comment/Appreciate) badge, message body, and timestamp",
-        "Clicking a notification marks it read and removes it from the unread count",
-        "Appreciate notifications are styled in green, Comment in blue, Scold in red/orange",
-        "After sending a comment, the parent dashboard textarea is cleared and a success confirmation is shown"
+        "User can open an 'Add Timer' form with start (month/day) and end (year/month/day) inputs",
+        "Saved timers display a large live countdown in months, days, hours, minutes",
+        "Multiple timers can be active simultaneously",
+        "Timers persist across page refreshes (localStorage)",
+        "Each timer can be deleted individually"
       ],
       "file_operations": [
         {
-          "path": "frontend/src/utils/localStorageService.ts",
-          "operation": "modify",
-          "description": "Add notification management functions: addNotification(username, notification: { id: number, from: string, type: 'scold'|'comment'|'appreciate', message: string, timestamp: number, read: boolean }) that appends the notification to the user's namespaced notifications array in localStorage. Implement getNotifications(username) that retrieves all notifications for the user. Add markNotificationRead(username, notificationId) that finds the notification by id and sets read to true. Ensure notifications are stored under the key pattern 'notifications_[username]' for proper namespacing."
+          "path": "frontend/src/pages/TimerPage.tsx",
+          "operation": "create",
+          "description": "Create a new Timer page component that allows users to add timers with start date (month, day) and end date (year, month, day) fields. Display all active timers with large, prominent countdown text showing months, days, hours, and minutes remaining. Implement real-time countdown updates using setInterval. Support multiple simultaneous timers displayed as a list. Include a delete button for each timer. Use localStorage to persist timer data (integrate with frontend/src/utils/localStorageService.ts)."
         },
         {
-          "path": "frontend/src/components/Layout.tsx",
+          "path": "frontend/src/App.tsx",
           "operation": "modify",
-          "description": "Add a notification bell icon (using lucide-react Bell icon) to the sidebar header next to the logout/login button. Fetch notifications via getNotifications(currentUsername) and calculate unread count. Display a red badge with the count if > 0. Implement a dropdown/popover (using shadcn/ui Popover or DropdownMenu) that opens on bell click, listing all notifications. Each notification item shows sender name ('From: [parentUsername]'), type badge (Scold in red-orange, Comment in blue, Appreciate in green), message text, and formatted timestamp. Add onClick handler to each notification that calls markNotificationRead() and updates local state to remove the badge. Use useEffect to poll or refresh notifications when the component mounts or when navigating to Layout. Style the bell icon with relative positioning for the badge overlay and the dropdown with max-height and scroll for long lists."
+          "description": "Register the new '/timer' route in the TanStack Router configuration. Import TimerPage and add it as a child route under the authenticated studentRoute. Ensure the route is protected by the student auth guard."
+        },
+        {
+          "path": "frontend/src/utils/localStorageService.ts",
+          "operation": "modify",
+          "description": "Add timer data storage methods to localStorageService: addTimer, getTimers, deleteTimer. Define a Timer interface with fields for id, label, startDate (month, day), endDate (year, month, day), and createdAt. Store timers in the user-namespaced localStorage key pattern used by other entities."
         }
       ]
     },
     {
       "id": "REQ-5",
-      "summary": "Add protected /parent-dashboard route to TanStack Router with auth guard and logout functionality",
+      "summary": "Add a persistent bottom navigation bar visible on every page with five buttons: Home, Subject, Question, Reminder, and Target",
       "acceptanceCriteria": [
-        "/parent-dashboard route exists and renders the Parent Dashboard page",
-        "Navigating to /parent-dashboard without a parent session redirects to /login",
-        "A logout button on the parent dashboard clears parent session and navigates to /login",
-        "All existing student routes remain unaffected"
+        "Bottom navigation bar is visible and fixed on every authenticated page",
+        "Five buttons: Home, Subject, Question, Reminder, Target — each with an icon and label",
+        "Each button navigates correctly to the respective page",
+        "Active page button is highlighted",
+        "The bar does not overlap main page content (page content has bottom padding)"
       ],
       "file_operations": [
         {
-          "path": "frontend/src/App.tsx",
-          "operation": "modify",
-          "description": "Import ParentDashboard component. Add a new route object for '/parent-dashboard' in the routesConfig array with element: <ParentDashboard />. Implement a beforeLoad guard for this route that checks getParentSession() from localStorageService; if no parent session exists, redirect to '/login' using navigate({ to: '/login' }). Ensure the route is registered in the router configuration alongside existing student routes. Do not modify any existing route guards or student route definitions."
+          "path": "frontend/src/components/BottomNavBar.tsx",
+          "operation": "create",
+          "description": "Create a BottomNavBar component with five navigation buttons: Home (to /), Subject (to /subjects), Question (to /question-bank), Reminder (to /reminders), and Target (to /targets). Each button includes an icon from lucide-react and a label. Use TanStack Router's Link component and useRouterState or useLocation to detect the active route and highlight the corresponding button. Style the bar to be fixed at the bottom of the viewport with appropriate z-index and background."
         },
         {
-          "path": "frontend/src/pages/ParentDashboard.tsx",
+          "path": "frontend/src/components/Layout.tsx",
           "operation": "modify",
-          "description": "Add a logout button in the top-right corner of the Parent Dashboard header. Import useNavigate from TanStack Router. On button click, call clearParentSession() from localStorageService and navigate to '/login' using navigate({ to: '/login' }). Style the logout button consistently with existing UI using shadcn/ui Button component with variant='outline'."
+          "description": "Import and render the BottomNavBar component at the bottom of the Layout component, below the main content area. Add bottom padding to the main content wrapper (e.g., pb-20 or pb-24) to prevent content from being hidden behind the fixed bottom nav bar."
+        }
+      ]
+    },
+    {
+      "id": "REQ-6",
+      "summary": "Add a 'Target 🎯 100%' motivational widget on the homepage (Dashboard) with a bold winner aesthetic",
+      "acceptanceCriteria": [
+        "A Target 🎯 widget is visible on the homepage",
+        "It displays the user's current target completion percentage",
+        "The widget uses gold, trophy, or championship-themed colors and design",
+        "It includes a motivational message encouraging 100% completion",
+        "The widget updates when targets are completed"
+      ],
+      "file_operations": [
+        {
+          "path": "frontend/src/components/TargetMotivationWidget.tsx",
+          "operation": "create",
+          "description": "Create a TargetMotivationWidget component that displays a motivational target completion widget. Calculate the completion percentage from the user's targets (completed / total). Use bold, champion-themed styling with gold/trophy colors (e.g., gradient backgrounds with yellows, oranges, and golds), large trophy or medal icons, and energetic typography. Include the 🎯 emoji and a motivational message encouraging the user to reach 100%. Make the design visually striking and celebratory."
+        },
+        {
+          "path": "frontend/src/pages/Dashboard.tsx",
+          "operation": "modify",
+          "description": "Import and render the TargetMotivationWidget component prominently on the Dashboard page (e.g., near the top after the countdown banner or in a featured section). Ensure it receives target data via the useGetTargets hook and reactively updates when targets change."
         }
       ]
     }

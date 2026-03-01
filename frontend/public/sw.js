@@ -1,19 +1,21 @@
-const CACHE_NAME = 'board-saathi-v5';
+const CACHE_NAME = 'board-saathi-v6';
 
 // Core app shell files to precache
 const PRECACHE_URLS = [
   '/',
   '/index.html',
   '/manifest.json',
-  // Generated PNG icons
+  // New DEV-branded study icons
+  '/assets/generated/favicon.dim_32x32.png',
+  '/assets/generated/app-icon-192.dim_192x192.png',
+  '/assets/generated/app-icon-512.dim_512x512.png',
+  '/assets/generated/app-icon-maskable.dim_512x512.png',
+  // Legacy icons (kept for backward compatibility)
   '/assets/generated/board-saathi-logo.dim_256x256.png',
   '/assets/generated/board-saathi-icon.dim_512x512.png',
   '/assets/generated/board-saathi-icon-192.dim_192x192.png',
   '/assets/generated/board-saathi-apple-touch.dim_180x180.png',
   '/assets/generated/app-icon.dim_512x512.png',
-  '/assets/generated/app-icon-192.dim_192x192.png',
-  '/assets/generated/app-icon-512.dim_512x512.png',
-  '/assets/generated/app-icon-maskable.dim_512x512.png',
   '/assets/generated/app-icon-maskable-512.dim_512x512.png',
   '/assets/generated/icon-192.dim_192x192.png',
   '/assets/generated/icon-512.dim_512x512.png',

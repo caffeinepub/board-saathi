@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Target, Plus, Trash2, CheckCircle2, Circle, Loader2 } from 'lucide-react';
+import { Target, Plus, Trash2, CheckCircle2, Circle, Loader2, AlarmClock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -9,6 +9,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { useGetTargets, useAddTarget, useCompleteTarget, useDeleteTarget } from '../hooks/useQueries';
+import { useTargetAlarmScheduler } from '../hooks/useTargetAlarmScheduler';
+
+const ONE_HOUR_MS = 60 * 60 * 1000;
 
 export default function TargetsPage() {
   const [addOpen, setAddOpen] = useState(false);
@@ -20,6 +23,9 @@ export default function TargetsPage() {
   const addTargetMutation = useAddTarget();
   const completeTargetMutation = useCompleteTarget();
   const deleteTargetMutation = useDeleteTarget();
+
+  // Schedule 1-hour-before alarms for all active targets with deadlines
+  useTargetAlarmScheduler(targets);
 
   const handleAdd = async () => {
     if (!title.trim()) {
@@ -39,7 +45,7 @@ export default function TargetsPage() {
 
     try {
       await addTargetMutation.mutateAsync({ title: title.trim(), description: description.trim(), deadline: deadlineTs });
-      toast.success('Target added!');
+      toast.success('Target added! You\'ll get an alarm 1 hour before the deadline.');
       setTitle('');
       setDescription('');
       setDeadline('');
@@ -82,6 +88,11 @@ export default function TargetsPage() {
     return { text: dateStr, badge: `${days}d left`, variant: 'outline' as const };
   };
 
+  // Returns true if the target has a deadline more than 1 hour in the future
+  const hasActiveAlarm = (deadline: number): boolean => {
+    return deadline - now > ONE_HOUR_MS;
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -119,6 +130,7 @@ export default function TargetsPage() {
               <div className="space-y-3">
                 {active.map(target => {
                   const dl = formatDeadline(target.deadline);
+                  const alarmActive = hasActiveAlarm(target.deadline);
                   return (
                     <Card key={target.id} className="border-l-4 border-l-primary">
                       <CardContent className="p-4">
@@ -148,6 +160,13 @@ export default function TargetsPage() {
                             </div>
                             {target.description && <p className="text-xs text-muted-foreground mt-1">{target.description}</p>}
                             <p className="text-xs text-muted-foreground mt-1">Deadline: {dl.text}</p>
+                            {/* 1-hour alarm badge — only shown when deadline is more than 1 hour away */}
+                            {alarmActive && (
+                              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1">
+                                <AlarmClock className="w-3 h-3" />
+                                ⏰ 1hr alarm set
+                              </p>
+                            )}
                           </div>
                         </div>
                       </CardContent>
@@ -203,7 +222,7 @@ export default function TargetsPage() {
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Add New Target</DialogTitle>
-            <DialogDescription>Set a study goal with a deadline to stay motivated.</DialogDescription>
+            <DialogDescription>Set a study goal with a deadline. You'll get an alarm 1 hour before the deadline.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
@@ -236,6 +255,10 @@ export default function TargetsPage() {
                 min={new Date().toISOString().split('T')[0]}
               />
             </div>
+            <p className="text-xs text-muted-foreground flex items-center gap-1">
+              <AlarmClock className="w-3 h-3" />
+              An alarm will sound 1 hour before the deadline.
+            </p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setAddOpen(false); setTitle(''); setDescription(''); setDeadline(''); }}>

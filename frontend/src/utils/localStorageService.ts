@@ -101,6 +101,13 @@ export function isAuthenticated(): boolean {
   return !!id && id !== 'guest';
 }
 
+// Alias for compatibility
+export function getStoredAuth(): StoredUserAccount | null {
+  const userId = getCurrentUserId();
+  if (!userId || userId === 'guest') return null;
+  return getUserAccountById(userId);
+}
+
 // Storage key helpers
 export function getUserDataKey(userId: string, dataType: string): string {
   if (userId === 'guest') {
@@ -110,7 +117,6 @@ export function getUserDataKey(userId: string, dataType: string): string {
 }
 
 function getStorage(userId: string): Storage {
-  // Guest data uses sessionStorage (cleared on browser close)
   if (userId === 'guest') return sessionStorage;
   return localStorage;
 }
@@ -295,7 +301,7 @@ export function savePlannerTasks(userId: string, tasks: LocalPlannerTask[]): voi
   setData(userId, 'plannerTasks', tasks);
 }
 
-// Reminder helpers — alarmSound stores the sound identifier (e.g. 'joshsound')
+// Reminder helpers
 export interface LocalReminder {
   id: number;
   text: string;
@@ -403,7 +409,6 @@ export function updateStreak(userId: string): LocalStudyStreak {
   const newStreakData: LocalStudyStreak = { currentStreak: newStreak, lastActiveDate: now, topStreak: newTop };
   saveStudyStreak(userId, newStreakData);
 
-  // Award milestone achievements
   const milestones = [3, 7, 30];
   const achievements = getAchievements(userId);
   let updated = [...achievements];
@@ -472,7 +477,6 @@ export function initializeUserData(userId: string): void {
   if (existing.length === 0) {
     const subjects: LocalSubject[] = DEFAULT_SUBJECTS.map((s, i) => ({ id: i + 1, name: s.name }));
     saveSubjects(userId, subjects);
-    // Set counter to 6
     const storage = userId === 'guest' ? sessionStorage : localStorage;
     storage.setItem(`bs_${userId}_counter_subject`, '6');
   }
@@ -484,16 +488,17 @@ export function initializeUserData(userId: string): void {
 
 export interface StoredParentAccount {
   parentUsername: string;
-  passwordHash: string; // hash of child's password used as parent credential
+  passwordHash: string;
   childUsername: string;
+  parentName: string;
 }
 
 export interface ParentSession {
   parentUsername: string;
   childUsername: string;
+  parentName: string;
 }
 
-// Parent account storage
 function getAllParentAccounts(): Record<string, StoredParentAccount> {
   try {
     const raw = localStorage.getItem('bs_parent_accounts');
@@ -512,62 +517,47 @@ export function getParentAccount(parentUsername: string): StoredParentAccount | 
   return accounts[parentUsername] || null;
 }
 
-/**
- * Create a parent account linked to a child's account.
- * Validates that the child account exists and the provided password matches.
- */
 export function createParentAccount(
   parentUsername: string,
   childUsername: string,
   childPassword: string
 ): void {
-  // Validate parent username not already taken
   if (getParentAccount(parentUsername)) {
     throw new Error('Parent username already taken. Please choose another.');
   }
-
-  // Validate child account exists
   const childAccount = getUserAccount(childUsername);
   if (!childAccount) {
     throw new Error(`No student account found with username "${childUsername}". Ask your child to register first.`);
   }
-
-  // Validate child password
   if (childAccount.passwordHash !== simpleHash(childPassword)) {
     throw new Error("Child's password is incorrect. Please ask your child for their password.");
   }
-
   const parentAccount: StoredParentAccount = {
     parentUsername,
     passwordHash: simpleHash(childPassword),
     childUsername,
+    parentName: parentUsername,
   };
-
   const accounts = getAllParentAccounts();
   accounts[parentUsername] = parentAccount;
   saveAllParentAccounts(accounts);
 }
 
-/**
- * Authenticate a parent using their username and the child's password.
- */
 export function parentLogin(parentUsername: string, childPassword: string): ParentSession {
   const parentAccount = getParentAccount(parentUsername);
   if (!parentAccount) {
     throw new Error('Parent account not found. Please create an account first.');
   }
-
   if (parentAccount.passwordHash !== simpleHash(childPassword)) {
     throw new Error("Incorrect password. Please enter your child's password.");
   }
-
   return {
     parentUsername: parentAccount.parentUsername,
     childUsername: parentAccount.childUsername,
+    parentName: parentAccount.parentName,
   };
 }
 
-// Parent session management (stored in sessionStorage separately from student session)
 export function getParentSession(): ParentSession | null {
   try {
     const raw = sessionStorage.getItem('bs_parentSession');
@@ -585,10 +575,6 @@ export function clearParentSession(): void {
   sessionStorage.removeItem('bs_parentSession');
 }
 
-/**
- * Get all child data for a parent session.
- * Looks up the child's userId from their username and returns all their data.
- */
 export interface LinkedChildData {
   childAccount: StoredUserAccount;
   subjects: LocalSubject[];
@@ -607,12 +593,9 @@ export interface LinkedChildData {
 export function getLinkedChildData(parentUsername: string): LinkedChildData | null {
   const parentAccount = getParentAccount(parentUsername);
   if (!parentAccount) return null;
-
   const childAccount = getUserAccount(parentAccount.childUsername);
   if (!childAccount) return null;
-
   const userId = childAccount.userId;
-
   return {
     childAccount,
     subjects: getSubjects(userId),
@@ -630,7 +613,7 @@ export function getLinkedChildData(parentUsername: string): LinkedChildData | nu
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// NOTIFICATION SYSTEM
+// NOTIFICATIONS (legacy popover system)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type NotificationType = 'scold' | 'comment' | 'appreciate';
@@ -644,33 +627,218 @@ export interface LocalNotification {
   read: boolean;
 }
 
-function getNotificationsKey(username: string): string {
-  return `bs_notifications_${username}`;
-}
+const NOTIF_KEY_PREFIX = 'bs_notif_';
 
-export function getNotifications(username: string): LocalNotification[] {
+export function getNotifications(childUsername: string): LocalNotification[] {
   try {
-    const raw = localStorage.getItem(getNotificationsKey(username));
+    const raw = localStorage.getItem(NOTIF_KEY_PREFIX + childUsername);
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
   }
 }
 
-export function addNotification(username: string, notification: LocalNotification): void {
-  const notifications = getNotifications(username);
-  notifications.push(notification);
-  localStorage.setItem(getNotificationsKey(username), JSON.stringify(notifications));
+export function saveNotifications(childUsername: string, notifications: LocalNotification[]): void {
+  localStorage.setItem(NOTIF_KEY_PREFIX + childUsername, JSON.stringify(notifications));
 }
 
-export function markNotificationRead(username: string, notificationId: number): void {
-  const notifications = getNotifications(username);
-  const updated = notifications.map(n =>
-    n.id === notificationId ? { ...n, read: true } : n
-  );
-  localStorage.setItem(getNotificationsKey(username), JSON.stringify(updated));
+export function addNotification(childUsername: string, notification: Omit<LocalNotification, 'id' | 'read'>): void {
+  const notifications = getNotifications(childUsername);
+  const id = Date.now();
+  notifications.unshift({ ...notification, id, read: false });
+  saveNotifications(childUsername, notifications.slice(0, 50));
 }
 
-export function getUnreadNotificationCount(username: string): number {
-  return getNotifications(username).filter(n => !n.read).length;
+export function markNotificationRead(childUsername: string, notifId: number): void {
+  const notifications = getNotifications(childUsername);
+  const updated = notifications.map(n => n.id === notifId ? { ...n, read: true } : n);
+  saveNotifications(childUsername, updated);
+}
+
+export function markAllNotificationsRead(childUsername: string): void {
+  const notifications = getNotifications(childUsername);
+  const updated = notifications.map(n => ({ ...n, read: true }));
+  saveNotifications(childUsername, updated);
+}
+
+export function getUnreadCount(childUsername: string): number {
+  return getNotifications(childUsername).filter(n => !n.read).length;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PARENT-CHILD MESSAGING (new system)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ParentMessage {
+  id: string;
+  fromParent: string;
+  parentName: string;
+  childUsername: string;
+  message: string;
+  type: 'comment' | 'scold' | 'appreciation';
+  timestamp: number;
+  read: boolean;
+  reply?: string;
+  repliedAt?: number;
+}
+
+const CHILD_MESSAGES_KEY = 'bs_child_messages';
+
+export function getChildMessages(childUsername: string): ParentMessage[] {
+  try {
+    const raw = localStorage.getItem(CHILD_MESSAGES_KEY);
+    const all: ParentMessage[] = raw ? JSON.parse(raw) : [];
+    return all.filter(m => m.childUsername === childUsername);
+  } catch {
+    return [];
+  }
+}
+
+export function saveParentMessage(
+  childUsername: string,
+  msg: { fromParent: string; message: string; type: 'comment' | 'scold' | 'appreciation' }
+): void {
+  try {
+    const raw = localStorage.getItem(CHILD_MESSAGES_KEY);
+    const all: ParentMessage[] = raw ? JSON.parse(raw) : [];
+    const newMsg: ParentMessage = {
+      id: Date.now().toString() + Math.random().toString(36).slice(2),
+      fromParent: msg.fromParent,
+      parentName: msg.fromParent,
+      childUsername,
+      message: msg.message,
+      type: msg.type,
+      timestamp: Date.now(),
+      read: false,
+    };
+    all.push(newMsg);
+    localStorage.setItem(CHILD_MESSAGES_KEY, JSON.stringify(all));
+  } catch (e) {
+    console.error('Failed to save parent message:', e);
+  }
+}
+
+export function markMessageAsRead(messageId: string): void {
+  try {
+    const raw = localStorage.getItem(CHILD_MESSAGES_KEY);
+    const all: ParentMessage[] = raw ? JSON.parse(raw) : [];
+    const updated = all.map(m => m.id === messageId ? { ...m, read: true } : m);
+    localStorage.setItem(CHILD_MESSAGES_KEY, JSON.stringify(updated));
+  } catch {
+    // ignore
+  }
+}
+
+export function updateMessageReply(messageId: string, reply: string): void {
+  try {
+    const raw = localStorage.getItem(CHILD_MESSAGES_KEY);
+    const all: ParentMessage[] = raw ? JSON.parse(raw) : [];
+    const updated = all.map(m =>
+      m.id === messageId ? { ...m, reply, repliedAt: Date.now() } : m
+    );
+    localStorage.setItem(CHILD_MESSAGES_KEY, JSON.stringify(updated));
+  } catch {
+    // ignore
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PARENT REPLY INBOX
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ParentReply {
+  id: string;
+  fromChild: string;
+  toParent: string;
+  originalMessageId: string;
+  originalMessage: string;
+  replyText: string;
+  repliedAt: number;
+  seen: boolean;
+}
+
+const PARENT_REPLIES_KEY = 'bs_parent_replies';
+
+export function getParentReplies(parentUsername: string): ParentReply[] {
+  try {
+    const raw = localStorage.getItem(PARENT_REPLIES_KEY);
+    const all: ParentReply[] = raw ? JSON.parse(raw) : [];
+    return all.filter(r => r.toParent === parentUsername);
+  } catch {
+    return [];
+  }
+}
+
+export function saveChildReplyToParent(toParent: string, reply: Omit<ParentReply, 'toParent' | 'seen'>): void {
+  try {
+    const raw = localStorage.getItem(PARENT_REPLIES_KEY);
+    const all: ParentReply[] = raw ? JSON.parse(raw) : [];
+    const existing = all.findIndex(r => r.id === reply.id);
+    const newReply: ParentReply = { ...reply, toParent, seen: false };
+    if (existing >= 0) {
+      all[existing] = newReply;
+    } else {
+      all.push(newReply);
+    }
+    localStorage.setItem(PARENT_REPLIES_KEY, JSON.stringify(all));
+  } catch (e) {
+    console.error('Failed to save child reply:', e);
+  }
+}
+
+export function markParentReplyAsSeen(replyId: string): void {
+  try {
+    const raw = localStorage.getItem(PARENT_REPLIES_KEY);
+    const all: ParentReply[] = raw ? JSON.parse(raw) : [];
+    const updated = all.map(r => r.id === replyId ? { ...r, seen: true } : r);
+    localStorage.setItem(PARENT_REPLIES_KEY, JSON.stringify(updated));
+  } catch {
+    // ignore
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TIMERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface TimerData {
+  id: string;
+  label: string;
+  startMonth: number;
+  startDay: number;
+  endYear: number;
+  endMonth: number;
+  endDay: number;
+  createdAt: number;
+}
+
+function getTimersKey(userId: string): string {
+  return `bs_${userId}_timers`;
+}
+
+export function getTimers(userId: string): TimerData[] {
+  try {
+    const raw = localStorage.getItem(getTimersKey(userId));
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function addTimer(userId: string, timer: Omit<TimerData, 'id' | 'createdAt'>): TimerData {
+  const timers = getTimers(userId);
+  const newTimer: TimerData = {
+    ...timer,
+    id: `timer_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    createdAt: Date.now(),
+  };
+  timers.push(newTimer);
+  localStorage.setItem(getTimersKey(userId), JSON.stringify(timers));
+  return newTimer;
+}
+
+export function deleteTimer(userId: string, timerId: string): void {
+  const timers = getTimers(userId);
+  const updated = timers.filter(t => t.id !== timerId);
+  localStorage.setItem(getTimersKey(userId), JSON.stringify(updated));
 }

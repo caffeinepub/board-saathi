@@ -1,208 +1,179 @@
-import { useGetPersonalBest, useGetStudyStreak, useGetAchievements, useGetSubjects } from '../hooks/useQueries';
+import { Trophy, Flame, Clock, BookOpen, HelpCircle, Star, Award } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Trophy, BookOpen, HelpCircle, Flame, Zap, Star, Crown, Medal, TrendingUp,
-} from 'lucide-react';
+import { useGetAchievements, useGetPersonalBest, useGetStudyStreak } from '../hooks/useQueries';
 
-function getRankIcon(rank: string) {
-  if (rank === 'Board Champion') return <Crown className="w-8 h-8 text-yellow-500" />;
-  if (rank === 'Rising Star') return <Star className="w-8 h-8 text-blue-500" />;
-  if (rank === 'Dedicated Learner') return <Medal className="w-8 h-8 text-purple-500" />;
-  return <BookOpen className="w-8 h-8 text-green-500" />;
+function formatTime(seconds: number): string {
+  if (!seconds || seconds === 0) return '—';
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  if (mins === 0) return `${secs}s`;
+  return `${mins}m ${secs}s`;
 }
 
-function getRankColor(rank: string) {
-  if (rank === 'Board Champion') return 'from-yellow-400 to-orange-500';
-  if (rank === 'Rising Star') return 'from-blue-400 to-purple-500';
-  if (rank === 'Dedicated Learner') return 'from-purple-400 to-pink-500';
-  return 'from-green-400 to-teal-500';
-}
-
-interface AchievementCardProps {
-  title: string;
-  value: string;
-  icon: React.ReactNode;
-  description: string;
-  gradient: string;
-}
-
-function AchievementCard({ title, value, icon, description, gradient }: AchievementCardProps) {
-  return (
-    <Card className="overflow-hidden">
-      <div className={`bg-gradient-to-br ${gradient} p-4 text-white`}>
-        <div className="flex items-center justify-between">
-          <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-            {icon}
-          </div>
-          <span className="text-2xl font-bold">{value}</span>
-        </div>
-      </div>
-      <CardContent className="p-3">
-        <p className="font-semibold text-sm">{title}</p>
-        <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
-      </CardContent>
-    </Card>
-  );
-}
+const ACHIEVEMENT_CONFIG: Record<string, { label: string; icon: string; color: string }> = {
+  '3-day-streak': { label: '3-Day Streak', icon: '🔥', color: 'bg-orange-100 text-orange-700 border-orange-200' },
+  '7-day-streak': { label: '7-Day Streak', icon: '⚡', color: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
+  '30-day-streak': { label: '30-Day Streak', icon: '🏆', color: 'bg-amber-100 text-amber-700 border-amber-200' },
+};
 
 export default function MyAchievementsPage() {
-  const { data: personalBest, isLoading } = useGetPersonalBest();
+  const { data: achievements = [], isLoading: achLoading } = useGetAchievements();
+  const { data: personalBest, isLoading: pbLoading } = useGetPersonalBest();
   const { data: streak } = useGetStudyStreak();
-  const { data: achievements } = useGetAchievements();
-  const { data: subjects } = useGetSubjects();
 
-  // fastestTestTime is now a number (milliseconds), not bigint
-  const formatTime = (seconds: number) => {
-    if (seconds === 0) return 'N/A';
-    const m = Math.floor(seconds / 60);
-    const sec = seconds % 60;
-    return `${m}m ${sec}s`;
-  };
+  const isLoading = achLoading || pbLoading;
+
+  if (isLoading) {
+    return (
+      <div className="p-4 md:p-6 max-w-3xl mx-auto space-y-4">
+        <Skeleton className="h-8 w-48" />
+        <div className="grid grid-cols-2 gap-3">
+          {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-24" />)}
+        </div>
+      </div>
+    );
+  }
+
+  const statCards = [
+    {
+      label: 'Chapters Completed',
+      value: String(personalBest?.totalChaptersCompleted ?? 0),
+      icon: BookOpen,
+      color: 'text-blue-500',
+      bg: 'bg-blue-50',
+    },
+    {
+      label: 'Questions Practiced',
+      value: String(personalBest?.totalQuestionsPracticed ?? 0),
+      icon: HelpCircle,
+      color: 'text-purple-500',
+      bg: 'bg-purple-50',
+    },
+    {
+      label: 'Longest Streak',
+      value: `${personalBest?.longestStreak ?? 0} days`,
+      icon: Flame,
+      color: 'text-orange-500',
+      bg: 'bg-orange-50',
+    },
+    {
+      label: 'Fastest Test',
+      value: formatTime(personalBest?.fastestTestTime ?? 0),
+      icon: Clock,
+      color: 'text-green-500',
+      bg: 'bg-green-50',
+    },
+  ];
 
   return (
-    <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-6">
+    <div className="p-4 md:p-6 max-w-3xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-          <Trophy className="w-5 h-5 text-primary" />
+        <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
+          <Trophy className="w-5 h-5 text-amber-600" />
         </div>
         <div>
           <h1 className="text-2xl font-bold">My Achievements</h1>
-          <p className="text-sm text-muted-foreground">Your personal best stats and badges</p>
+          <p className="text-sm text-muted-foreground">Your personal bests and badges</p>
         </div>
       </div>
 
-      {isLoading ? (
-        <div className="grid grid-cols-2 gap-3">
-          {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-32 w-full" />)}
-        </div>
-      ) : (
-        <>
-          {/* Rank Card */}
-          {personalBest && (
-            <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-r ${getRankColor(personalBest.rankLabel)} p-6 text-white`}>
-              <div className="flex items-center gap-4">
-                <div className="w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center">
-                  {getRankIcon(personalBest.rankLabel)}
+      {/* Rank */}
+      {personalBest?.rankLabel && (
+        <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200">
+          <CardContent className="p-5 flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center text-3xl">
+              🏅
+            </div>
+            <div>
+              <p className="text-xs text-amber-600 font-medium uppercase tracking-wide">Current Rank</p>
+              <p className="text-2xl font-bold text-amber-800">{personalBest.rankLabel}</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Stats Grid */}
+      <div className="grid grid-cols-2 gap-3">
+        {statCards.map(stat => {
+          const Icon = stat.icon;
+          return (
+            <Card key={stat.label}>
+              <CardContent className="p-4">
+                <div className={`w-9 h-9 rounded-lg ${stat.bg} flex items-center justify-center mb-2`}>
+                  <Icon className={`w-4 h-4 ${stat.color}`} />
                 </div>
-                <div>
-                  <p className="text-white/70 text-sm font-medium">Your Rank</p>
-                  <h2 className="text-2xl font-bold">{personalBest.rankLabel}</h2>
-                  <p className="text-white/80 text-sm mt-1">Keep studying to level up! 🚀</p>
-                </div>
-              </div>
+                <p className="text-xl font-bold text-foreground">{stat.value}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{stat.label}</p>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* Current Streak */}
+      <Card>
+        <CardContent className="p-5">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-xl bg-orange-100 flex items-center justify-center">
+              <Flame className="w-6 h-6 text-orange-500" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Current Streak</p>
+              <p className="text-3xl font-bold text-orange-500">{streak?.currentStreak ?? 0} days</p>
+              <p className="text-xs text-muted-foreground">Best: {streak?.topStreak ?? 0} days</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Badges */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Award className="w-4 h-4 text-amber-500" />
+            Earned Badges
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {achievements.length === 0 ? (
+            <div className="text-center py-8">
+              <Star className="w-10 h-10 text-muted-foreground/30 mx-auto mb-2" />
+              <p className="text-sm text-muted-foreground">No badges yet</p>
+              <p className="text-xs text-muted-foreground/70 mt-1">
+                Keep studying to earn streak badges!
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {achievements.map(ach => {
+                const config = ACHIEVEMENT_CONFIG[ach.achievementType] ?? {
+                  label: ach.achievementType,
+                  icon: '🎖️',
+                  color: 'bg-gray-100 text-gray-700 border-gray-200',
+                };
+                return (
+                  <div
+                    key={ach.id}
+                    className={`flex items-center gap-3 p-3 rounded-lg border ${config.color}`}
+                  >
+                    <span className="text-2xl">{config.icon}</span>
+                    <div>
+                      <p className="font-semibold text-sm">{config.label}</p>
+                      <p className="text-xs opacity-70">
+                        {new Date(ach.achievedAt).toLocaleDateString('en-IN')}
+                      </p>
+                    </div>
+                    <Badge variant="secondary" className="ml-auto text-xs">Earned</Badge>
+                  </div>
+                );
+              })}
             </div>
           )}
-
-          {/* Stats Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <AchievementCard
-              title="Chapters Completed"
-              value={String(personalBest?.totalChaptersCompleted ?? 0)}
-              icon={<BookOpen className="w-5 h-5 text-white" />}
-              description="Total chapters finished"
-              gradient="from-blue-500 to-blue-600"
-            />
-            <AchievementCard
-              title="Questions Practiced"
-              value={String(personalBest?.totalQuestionsPracticed ?? 0)}
-              icon={<HelpCircle className="w-5 h-5 text-white" />}
-              description="Total Q&A pairs added"
-              gradient="from-purple-500 to-purple-600"
-            />
-            <AchievementCard
-              title="Longest Streak"
-              value={`${personalBest?.longestStreak ?? 0}d`}
-              icon={<Flame className="w-5 h-5 text-white" />}
-              description="Best consecutive days"
-              gradient="from-orange-500 to-red-500"
-            />
-            <AchievementCard
-              title="Current Streak"
-              value={`${streak?.currentStreak ?? 0}d`}
-              icon={<Zap className="w-5 h-5 text-white" />}
-              description="Days active in a row"
-              gradient="from-yellow-500 to-orange-500"
-            />
-            <AchievementCard
-              title="Fastest Test"
-              value={formatTime(personalBest?.fastestTestTime ?? 0)}
-              icon={<TrendingUp className="w-5 h-5 text-white" />}
-              description="Quickest test completion"
-              gradient="from-green-500 to-teal-500"
-            />
-          </div>
-
-          {/* Subject Best Scores */}
-          {personalBest && personalBest.highestScorePerSubject.length > 0 && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Trophy className="w-4 h-4 text-yellow-500" />
-                  Best Scores by Subject
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {personalBest.highestScorePerSubject.map(([subjectId, score]) => {
-                  const subject = subjects?.find((s) => s.id === subjectId);
-                  const pct = score;
-                  return (
-                    <div key={subjectId} className="flex items-center gap-3">
-                      <span className="text-sm font-medium w-40 truncate">
-                        {subject?.name ?? `Subject ${subjectId}`}
-                      </span>
-                      <div className="flex-1 bg-muted rounded-full h-2">
-                        <div
-                          className="bg-primary h-2 rounded-full transition-all"
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                      <span className="text-sm font-bold w-12 text-right">{pct}%</span>
-                    </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Milestone Badges */}
-          {achievements && achievements.length > 0 && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Medal className="w-4 h-4 text-purple-500" />
-                  Earned Badges
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-2">
-                  {achievements.map((ach) => {
-                    const label = ach.achievementType.replace(/-/g, ' ');
-                    const emoji =
-                      ach.achievementType.includes('30') ? '👑' :
-                      ach.achievementType.includes('7') ? '🏆' : '🏅';
-                    return (
-                      <div
-                        key={ach.id}
-                        className="flex items-center gap-2 px-3 py-2 rounded-xl bg-muted border"
-                      >
-                        <span className="text-lg">{emoji}</span>
-                        <div>
-                          <p className="text-xs font-semibold capitalize">{label}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(ach.achievedAt).toLocaleDateString('en-IN')}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </>
-      )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

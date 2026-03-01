@@ -1,38 +1,43 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getCurrentUserId,
-  getSubjects,
-  saveSubjects,
-  getChapters,
-  saveChapters,
-  getNotes,
-  saveNotes,
-  getQuestions,
-  saveQuestions,
-  getFlashcards,
-  saveFlashcards,
-  getMockTests,
-  saveMockTests,
-  getTestAttempts,
-  saveTestAttempts,
-  getPlannerTasks,
-  savePlannerTasks,
-  getReminders,
-  saveReminders,
-  getTargets,
-  saveTargets,
-  getRevisionTasks,
-  saveRevisionTasks,
-  getStudyStreak,
+  getSubjects, saveSubjects,
+  getChapters, saveChapters,
+  getNotes, saveNotes,
+  getQuestions, saveQuestions,
+  getFlashcards, saveFlashcards,
+  getMockTests, saveMockTests,
+  getTestAttempts, saveTestAttempts,
+  getPlannerTasks, savePlannerTasks,
+  getReminders, saveReminders,
+  getTargets, saveTargets,
+  getRevisionTasks, saveRevisionTasks,
+  getStudyStreak, updateStreak,
   getAchievements,
-  getUserAccountById,
-  saveUserAccount,
-  updateStreak,
-  scheduleRevisionTasks,
   getNextId,
-  initializeUserData,
+  scheduleRevisionTasks,
+  getChildMessages, markMessageAsRead as markMessageAsReadLS,
+  getParentReplies, markParentReplyAsSeen as markParentReplyAsSeenLS,
+  type LocalSubject,
+  type LocalChapter,
+  type LocalNote,
+  type LocalQuestion,
+  type LocalFlashcard,
+  type LocalMockTest,
+  type LocalMCQQuestion,
+  type LocalTestAttempt,
+  type LocalTestReport,
+  type LocalPlannerTask,
+  type LocalReminder,
+  type LocalTarget,
+  type LocalRevisionTask,
+  type LocalStudyStreak,
+  type LocalAchievement,
+  type ParentMessage,
+  type ParentReply,
 } from '../utils/localStorageService';
 
+// Re-export local types so pages can import them from useQueries
 export type {
   LocalSubject,
   LocalChapter,
@@ -49,140 +54,80 @@ export type {
   LocalRevisionTask,
   LocalStudyStreak,
   LocalAchievement,
-} from '../utils/localStorageService';
+  ParentMessage,
+  ParentReply,
+};
 
-// Helper to get current user ID safely
-function useUserId(): string {
-  return getCurrentUserId() || 'guest';
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function uid(): string {
+  const id = getCurrentUserId();
+  return id ?? 'guest';
 }
 
-// ─── User Profile ───────────────────────────────────────────────────────────
-
-export interface UserProfile {
-  username: string;
-  name: string;
-  school: string;
-  studentClass: number;
-}
-
-export function useGetCallerUserProfile() {
-  const userId = useUserId();
-
-  return useQuery<UserProfile | null>({
-    queryKey: ['currentUserProfile', userId],
-    queryFn: () => {
-      if (!userId || userId === 'guest') return null;
-      const account = getUserAccountById(userId);
-      if (!account) return null;
-      return {
-        username: account.username,
-        name: account.name,
-        school: account.school,
-        studentClass: account.studentClass,
-      };
-    },
-    enabled: true,
-  });
-}
-
-export function useSaveCallerUserProfile() {
-  const queryClient = useQueryClient();
-  const userId = useUserId();
-
-  return useMutation({
-    mutationFn: async (profile: UserProfile) => {
-      if (!userId || userId === 'guest') throw new Error('Not authenticated');
-      const account = getUserAccountById(userId);
-      if (!account) throw new Error('Account not found');
-      saveUserAccount({ ...account, name: profile.name, school: profile.school, studentClass: profile.studentClass });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['currentUserProfile'] });
-    },
-  });
-}
-
-// ─── Subjects ───────────────────────────────────────────────────────────────
+// ─── Subjects ─────────────────────────────────────────────────────────────────
 
 export function useGetSubjects() {
-  const userId = useUserId();
-
-  return useQuery({
-    queryKey: ['subjects', userId],
-    queryFn: () => {
-      initializeUserData(userId);
-      return getSubjects(userId);
-    },
-    enabled: true,
+  return useQuery<LocalSubject[]>({
+    queryKey: ['subjects'],
+    queryFn: () => getSubjects(uid()),
   });
 }
 
 export function useAddSubject() {
   const queryClient = useQueryClient();
-  const userId = useUserId();
-
   return useMutation({
     mutationFn: async (name: string) => {
+      const userId = uid();
       const subjects = getSubjects(userId);
       const id = getNextId(userId, 'subject');
-      const newSubject = { id, name };
-      saveSubjects(userId, [...subjects, newSubject]);
+      subjects.push({ id, name });
+      saveSubjects(userId, subjects);
       return id;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['subjects'] });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['subjects'] }),
   });
 }
 
-// ─── Chapters ───────────────────────────────────────────────────────────────
+// ─── Chapters ─────────────────────────────────────────────────────────────────
 
 export function useGetChaptersForSubject(subjectId: number) {
-  const userId = useUserId();
-
-  return useQuery({
-    queryKey: ['chapters', userId, subjectId],
-    queryFn: () => {
-      const all = getChapters(userId);
-      return all.filter(c => c.subjectId === subjectId);
-    },
-    enabled: subjectId > 0,
+  return useQuery<LocalChapter[]>({
+    queryKey: ['chapters', subjectId],
+    queryFn: () => getChapters(uid()).filter(c => c.subjectId === subjectId),
   });
 }
 
 export function useGetAllChapters() {
-  const userId = useUserId();
-
-  return useQuery({
-    queryKey: ['chapters', userId],
-    queryFn: () => getChapters(userId),
+  return useQuery<LocalChapter[]>({
+    queryKey: ['allChapters'],
+    queryFn: () => getChapters(uid()),
   });
 }
 
 export function useAddChapter() {
   const queryClient = useQueryClient();
-  const userId = useUserId();
-
   return useMutation({
     mutationFn: async ({ subjectId, name, weightage }: { subjectId: number; name: string; weightage: number }) => {
+      const userId = uid();
       const chapters = getChapters(userId);
       const id = getNextId(userId, 'chapter');
-      const newChapter = { id, subjectId, name, weightage, completed: false };
-      saveChapters(userId, [...chapters, newChapter]);
+      chapters.push({ id, subjectId, name, weightage, completed: false });
+      saveChapters(userId, chapters);
       return id;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['chapters'] });
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['chapters', variables.subjectId] });
+      queryClient.invalidateQueries({ queryKey: ['allChapters'] });
     },
   });
 }
 
 export function useMarkChapterCompleted() {
   const queryClient = useQueryClient();
-  const userId = useUserId();
-
   return useMutation({
     mutationFn: async ({ chapterId, completed }: { chapterId: number; completed: boolean }) => {
+      const userId = uid();
       const chapters = getChapters(userId);
       const chapter = chapters.find(c => c.id === chapterId);
       const updated = chapters.map(c => c.id === chapterId ? { ...c, completed } : c);
@@ -193,55 +138,50 @@ export function useMarkChapterCompleted() {
       }
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['allChapters'] });
       queryClient.invalidateQueries({ queryKey: ['chapters'] });
       queryClient.invalidateQueries({ queryKey: ['revisionTasks'] });
+      queryClient.invalidateQueries({ queryKey: ['studyStreak'] });
       queryClient.invalidateQueries({ queryKey: ['plannerTasks'] });
-      queryClient.invalidateQueries({ queryKey: ['streak'] });
     },
   });
 }
 
-// ─── Notes ──────────────────────────────────────────────────────────────────
+// ─── Notes ────────────────────────────────────────────────────────────────────
 
 export function useGetNotesForChapter(chapterId: number) {
-  const userId = useUserId();
-
-  return useQuery({
-    queryKey: ['notes', userId, chapterId],
-    queryFn: () => {
-      const all = getNotes(userId);
-      return all.filter(n => n.chapterId === chapterId);
-    },
-    enabled: chapterId > 0,
+  return useQuery<LocalNote[]>({
+    queryKey: ['notes', chapterId],
+    queryFn: () => getNotes(uid()).filter(n => n.chapterId === chapterId),
   });
 }
 
 export function useAddNote() {
   const queryClient = useQueryClient();
-  const userId = useUserId();
-
   return useMutation({
     mutationFn: async ({ chapterId, content, imageData }: { chapterId: number; content: string; imageData?: string }) => {
+      const userId = uid();
       const notes = getNotes(userId);
       const id = getNextId(userId, 'note');
-      const newNote = { id, chapterId, content, imageData, createdAt: Date.now() };
-      saveNotes(userId, [...notes, newNote]);
+      notes.push({ id, chapterId, content, imageData, createdAt: Date.now() });
+      saveNotes(userId, notes);
       return id;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notes'] });
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['notes', variables.chapterId] });
     },
   });
 }
 
 export function useDeleteNote() {
   const queryClient = useQueryClient();
-  const userId = useUserId();
-
   return useMutation({
     mutationFn: async (noteId: number) => {
+      const userId = uid();
       const notes = getNotes(userId);
+      const note = notes.find(n => n.id === noteId);
       saveNotes(userId, notes.filter(n => n.id !== noteId));
+      return note?.chapterId;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notes'] });
@@ -249,51 +189,28 @@ export function useDeleteNote() {
   });
 }
 
-// ─── Questions ──────────────────────────────────────────────────────────────
+// ─── Questions ────────────────────────────────────────────────────────────────
 
 export function useGetQuestionsForChapter(chapterId: number) {
-  const userId = useUserId();
-
-  return useQuery({
-    queryKey: ['questions', userId, chapterId],
-    queryFn: () => {
-      const all = getQuestions(userId);
-      return all.filter(q => q.chapterId === chapterId);
-    },
-    enabled: chapterId > 0,
-  });
-}
-
-export function useGetQuestionBank(subjectIdFilter?: number, chapterIdFilter?: number) {
-  const userId = useUserId();
-
-  return useQuery({
-    queryKey: ['questionBank', userId, subjectIdFilter, chapterIdFilter],
-    queryFn: () => {
-      const all = getQuestions(userId);
-      return all.filter(q => {
-        const subjectMatch = subjectIdFilter ? q.subjectId === subjectIdFilter : true;
-        const chapterMatch = chapterIdFilter ? q.chapterId === chapterIdFilter : true;
-        return subjectMatch && chapterMatch;
-      });
-    },
+  return useQuery<LocalQuestion[]>({
+    queryKey: ['questions', chapterId],
+    queryFn: () => getQuestions(uid()).filter(q => q.chapterId === chapterId),
   });
 }
 
 export function useAddQuestion() {
   const queryClient = useQueryClient();
-  const userId = useUserId();
-
   return useMutation({
     mutationFn: async ({ chapterId, subjectId, questionText, answer }: { chapterId: number; subjectId: number; questionText: string; answer: string }) => {
+      const userId = uid();
       const questions = getQuestions(userId);
       const id = getNextId(userId, 'question');
-      const newQuestion = { id, chapterId, subjectId, questionText, answer };
-      saveQuestions(userId, [...questions, newQuestion]);
+      questions.push({ id, chapterId, subjectId, questionText, answer });
+      saveQuestions(userId, questions);
       return id;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['questions'] });
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['questions', variables.chapterId] });
       queryClient.invalidateQueries({ queryKey: ['questionBank'] });
     },
   });
@@ -301,10 +218,9 @@ export function useAddQuestion() {
 
 export function useDeleteQuestion() {
   const queryClient = useQueryClient();
-  const userId = useUserId();
-
   return useMutation({
     mutationFn: async (questionId: number) => {
+      const userId = uid();
       const questions = getQuestions(userId);
       saveQuestions(userId, questions.filter(q => q.id !== questionId));
     },
@@ -315,213 +231,193 @@ export function useDeleteQuestion() {
   });
 }
 
-// ─── Flashcards ─────────────────────────────────────────────────────────────
+// ─── Question Bank ────────────────────────────────────────────────────────────
 
-export function useGetAllFlashcards() {
-  const userId = useUserId();
-
-  return useQuery({
-    queryKey: ['flashcards', userId],
-    queryFn: () => getFlashcards(userId),
+export function useGetQuestionBank(subjectId?: number, chapterId?: number) {
+  return useQuery<LocalQuestion[]>({
+    queryKey: ['questionBank', subjectId, chapterId],
+    queryFn: () => {
+      let questions = getQuestions(uid());
+      if (subjectId !== undefined) questions = questions.filter(q => q.subjectId === subjectId);
+      if (chapterId !== undefined) questions = questions.filter(q => q.chapterId === chapterId);
+      return questions;
+    },
   });
 }
 
-export function useGetFlashcardsForChapter(chapterId: number) {
-  const userId = useUserId();
+// ─── Flashcards ───────────────────────────────────────────────────────────────
 
-  return useQuery({
-    queryKey: ['flashcards', userId, chapterId],
-    queryFn: () => {
-      const all = getFlashcards(userId);
-      return all.filter(f => f.chapterId === chapterId);
-    },
-    enabled: chapterId > 0,
+export function useGetAllFlashcards() {
+  return useQuery<LocalFlashcard[]>({
+    queryKey: ['allFlashcards'],
+    queryFn: () => getFlashcards(uid()),
   });
 }
 
 export function useAddFlashcard() {
   const queryClient = useQueryClient();
-  const userId = useUserId();
-
   return useMutation({
     mutationFn: async ({ chapterId, subjectId, front, back }: { chapterId: number; subjectId: number; front: string; back: string }) => {
+      const userId = uid();
       const flashcards = getFlashcards(userId);
       const id = getNextId(userId, 'flashcard');
-      const newCard = { id, chapterId, subjectId, front, back, learned: false };
-      saveFlashcards(userId, [...flashcards, newCard]);
+      flashcards.push({ id, chapterId, subjectId, front, back, learned: false });
+      saveFlashcards(userId, flashcards);
       return id;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['flashcards'] });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['allFlashcards'] }),
   });
 }
 
 export function useMarkFlashcardLearned() {
   const queryClient = useQueryClient();
-  const userId = useUserId();
-
   return useMutation({
     mutationFn: async ({ cardId, learned }: { cardId: number; learned: boolean }) => {
+      const userId = uid();
       const flashcards = getFlashcards(userId);
       saveFlashcards(userId, flashcards.map(f => f.id === cardId ? { ...f, learned } : f));
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['flashcards'] });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['allFlashcards'] }),
   });
 }
 
 export function useDeleteFlashcard() {
   const queryClient = useQueryClient();
-  const userId = useUserId();
-
   return useMutation({
     mutationFn: async (cardId: number) => {
+      const userId = uid();
       const flashcards = getFlashcards(userId);
       saveFlashcards(userId, flashcards.filter(f => f.id !== cardId));
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['flashcards'] });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['allFlashcards'] }),
   });
 }
 
-// ─── Mock Tests ─────────────────────────────────────────────────────────────
+// ─── Mock Tests ───────────────────────────────────────────────────────────────
 
 export function useGetMockTests() {
-  const userId = useUserId();
-
-  return useQuery({
-    queryKey: ['mockTests', userId],
-    queryFn: () => getMockTests(userId),
+  return useQuery<LocalMockTest[]>({
+    queryKey: ['mockTests'],
+    queryFn: () => getMockTests(uid()),
   });
 }
 
 export function useGetMockTest(testId: number) {
-  const userId = useUserId();
-
-  return useQuery({
-    queryKey: ['mockTest', userId, testId],
-    queryFn: () => {
-      const tests = getMockTests(userId);
-      return tests.find(t => t.id === testId) ?? null;
-    },
-    enabled: testId > 0,
+  return useQuery<LocalMockTest | null>({
+    queryKey: ['mockTest', testId],
+    queryFn: () => getMockTests(uid()).find(t => t.id === testId) ?? null,
   });
 }
 
 export function useCreateMockTest() {
   const queryClient = useQueryClient();
-  const userId = useUserId();
-
   return useMutation({
-    mutationFn: async ({ name, subjectId, questions }: { name: string; subjectId: number; questions: { id: number; questionText: string; options: string[]; correctOption: number }[] }) => {
+    mutationFn: async ({ name, subjectId, questions }: { name: string; subjectId: number; questions: LocalMCQQuestion[] }) => {
+      const userId = uid();
       const tests = getMockTests(userId);
       const id = getNextId(userId, 'mockTest');
-      const newTest = { id, name, subjectId, questions };
-      saveMockTests(userId, [...tests, newTest]);
+      tests.push({ id, name, subjectId, questions });
+      saveMockTests(userId, tests);
       return id;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['mockTests'] });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['mockTests'] }),
   });
 }
 
 export function useDeleteMockTest() {
   const queryClient = useQueryClient();
-  const userId = useUserId();
-
   return useMutation({
     mutationFn: async (testId: number) => {
-      const tests = getMockTests(userId);
-      saveMockTests(userId, tests.filter(t => t.id !== testId));
+      const userId = uid();
+      saveMockTests(userId, getMockTests(userId).filter(t => t.id !== testId));
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['mockTests'] });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['mockTests'] }),
   });
 }
 
 export function useSubmitMockTest() {
   const queryClient = useQueryClient();
-  const userId = useUserId();
-
   return useMutation({
-    mutationFn: async ({ testId, answers, timeTaken }: { testId: number; answers: { questionId: number; selectedOption: number }[]; timeTaken: number }) => {
-      const tests = getMockTests(userId);
-      const test = tests.find(t => t.id === testId);
+    mutationFn: async ({ testId, answers, timeTaken }: { testId: number; answers: Record<number, number>; timeTaken: number }) => {
+      const userId = uid();
+      const test = getMockTests(userId).find(t => t.id === testId);
       if (!test) throw new Error('Test not found');
 
       let score = 0;
       const results = test.questions.map(q => {
-        const answer = answers.find(a => a.questionId === q.id);
-        const selected = answer ? answer.selectedOption : 999;
+        const selected = answers[q.id] ?? 999;
         const isCorrect = selected === q.correctOption;
         if (isCorrect) score++;
-        return { questionId: q.id, questionText: q.questionText, selectedOption: selected, correctOption: q.correctOption, isCorrect };
+        return {
+          questionId: q.id,
+          questionText: q.questionText,
+          selectedOption: selected,
+          correctOption: q.correctOption,
+          isCorrect,
+        };
       });
 
       const total = test.questions.length;
-      const percentage = total === 0 ? 0 : Math.round((score * 100) / total);
+      const percentage = total > 0 ? Math.round((score / total) * 100) : 0;
+      const report: LocalTestReport = {
+        testId,
+        testName: test.name,
+        score,
+        total,
+        percentage,
+        timeTaken,
+        results,
+      };
 
-      const report = { testId, testName: test.name, score, total, percentage, timeTaken, results };
       const attempts = getTestAttempts(userId);
       const id = getNextId(userId, 'testAttempt');
-      const attempt = { id, testId, report, attemptedAt: Date.now() };
-      saveTestAttempts(userId, [...attempts, attempt]);
+      attempts.push({ id, testId, report, attemptedAt: Date.now() });
+      saveTestAttempts(userId, attempts);
       updateStreak(userId);
       return report;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['testAttempts'] });
-      queryClient.invalidateQueries({ queryKey: ['streak'] });
+      queryClient.invalidateQueries({ queryKey: ['studyStreak'] });
     },
   });
 }
 
 export function useGetTestAttempts() {
-  const userId = useUserId();
-
-  return useQuery({
-    queryKey: ['testAttempts', userId],
-    queryFn: () => getTestAttempts(userId),
+  return useQuery<LocalTestAttempt[]>({
+    queryKey: ['testAttempts'],
+    queryFn: () => getTestAttempts(uid()),
   });
 }
 
 export function useGetTestAttemptsForTest(testId: number) {
-  const userId = useUserId();
-
-  return useQuery({
-    queryKey: ['testAttempts', userId, testId],
-    queryFn: () => {
-      const all = getTestAttempts(userId);
-      return all.filter(a => a.testId === testId);
-    },
-    enabled: testId > 0,
+  return useQuery<LocalTestAttempt[]>({
+    queryKey: ['testAttempts', testId],
+    queryFn: () => getTestAttempts(uid()).filter(a => a.testId === testId),
   });
 }
 
-// ─── Planner Tasks ──────────────────────────────────────────────────────────
+// ─── Planner ──────────────────────────────────────────────────────────────────
 
 export function useGetPlannerTasksForMonth(year: number, month: number) {
-  const userId = useUserId();
-
-  return useQuery({
-    queryKey: ['plannerTasks', userId, year, month],
-    queryFn: () => getPlannerTasks(userId),
+  return useQuery<LocalPlannerTask[]>({
+    queryKey: ['plannerTasks', year, month],
+    queryFn: () => {
+      const tasks = getPlannerTasks(uid());
+      return tasks.filter(t => {
+        const d = new Date(t.date);
+        return d.getFullYear() === year && d.getMonth() + 1 === month;
+      });
+    },
   });
 }
 
 export function useGetPlannerTasksForDate(year: number, month: number, date: number) {
-  const userId = useUserId();
-
-  return useQuery({
-    queryKey: ['plannerTasksDate', userId, year, month, date],
+  return useQuery<LocalPlannerTask[]>({
+    queryKey: ['plannerTasksForDate', year, month, date],
     queryFn: () => {
-      const all = getPlannerTasks(userId);
-      return all.filter(t => {
+      const tasks = getPlannerTasks(uid());
+      return tasks.filter(t => {
         const d = new Date(t.date);
         return d.getFullYear() === year && d.getMonth() + 1 === month && d.getDate() === date;
       });
@@ -529,259 +425,207 @@ export function useGetPlannerTasksForDate(year: number, month: number, date: num
   });
 }
 
-export function useGetAllPlannerTasks() {
-  const userId = useUserId();
-
-  return useQuery({
-    queryKey: ['plannerTasks', userId],
-    queryFn: () => getPlannerTasks(userId),
-  });
-}
-
 export function useAddPlannerTask() {
   const queryClient = useQueryClient();
-  const userId = useUserId();
-
   return useMutation({
-    mutationFn: async ({ title, description, date, startTime }: { title: string; description: string; date: number; startTime: string }) => {
+    mutationFn: async ({ title, description, year, month, date, startTime }: { title: string; description: string; year: number; month: number; date: number; startTime: string }) => {
+      const userId = uid();
       const tasks = getPlannerTasks(userId);
       const id = getNextId(userId, 'plannerTask');
-      const newTask = { id, title, description, date, startTime, completed: false };
-      savePlannerTasks(userId, [...tasks, newTask]);
+      const dateObj = new Date(year, month - 1, date, 9, 0, 0);
+      tasks.push({ id, title, description, date: dateObj.getTime(), startTime, completed: false });
+      savePlannerTasks(userId, tasks);
       return id;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['plannerTasks'] });
-      queryClient.invalidateQueries({ queryKey: ['plannerTasksDate'] });
+      queryClient.invalidateQueries({ queryKey: ['plannerTasksForDate'] });
     },
   });
 }
 
 export function useCompletePlannerTask() {
   const queryClient = useQueryClient();
-  const userId = useUserId();
-
   return useMutation({
     mutationFn: async ({ taskId, completed }: { taskId: number; completed: boolean }) => {
+      const userId = uid();
       const tasks = getPlannerTasks(userId);
       savePlannerTasks(userId, tasks.map(t => t.id === taskId ? { ...t, completed } : t));
       if (completed) updateStreak(userId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['plannerTasks'] });
-      queryClient.invalidateQueries({ queryKey: ['plannerTasksDate'] });
-      queryClient.invalidateQueries({ queryKey: ['streak'] });
+      queryClient.invalidateQueries({ queryKey: ['plannerTasksForDate'] });
+      queryClient.invalidateQueries({ queryKey: ['studyStreak'] });
     },
   });
 }
 
 export function useDeletePlannerTask() {
   const queryClient = useQueryClient();
-  const userId = useUserId();
-
   return useMutation({
     mutationFn: async (taskId: number) => {
-      const tasks = getPlannerTasks(userId);
-      savePlannerTasks(userId, tasks.filter(t => t.id !== taskId));
+      const userId = uid();
+      savePlannerTasks(userId, getPlannerTasks(userId).filter(t => t.id !== taskId));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['plannerTasks'] });
-      queryClient.invalidateQueries({ queryKey: ['plannerTasksDate'] });
+      queryClient.invalidateQueries({ queryKey: ['plannerTasksForDate'] });
     },
   });
 }
 
-// ─── Reminders ──────────────────────────────────────────────────────────────
+// ─── Reminders ────────────────────────────────────────────────────────────────
 
 export function useGetReminders() {
-  const userId = useUserId();
-
-  return useQuery({
-    queryKey: ['reminders', userId],
-    queryFn: () => {
-      const all = getReminders(userId);
-      return all.sort((a, b) => a.dateTime - b.dateTime);
-    },
+  return useQuery<LocalReminder[]>({
+    queryKey: ['reminders'],
+    queryFn: () => [...getReminders(uid())].sort((a, b) => a.dateTime - b.dateTime),
   });
 }
 
 export function useAddReminder() {
   const queryClient = useQueryClient();
-  const userId = useUserId();
-
   return useMutation({
     mutationFn: async ({ text, dateTime, alarmSound }: { text: string; dateTime: number; alarmSound?: string }) => {
+      const userId = uid();
       const reminders = getReminders(userId);
       const id = getNextId(userId, 'reminder');
-      const newReminder = { id, text, dateTime, alarmSound };
-      saveReminders(userId, [...reminders, newReminder]);
+      reminders.push({ id, text, dateTime, alarmSound });
+      saveReminders(userId, reminders);
       return id;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['reminders'] });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['reminders'] }),
   });
 }
 
 export function useDeleteReminder() {
   const queryClient = useQueryClient();
-  const userId = useUserId();
-
   return useMutation({
     mutationFn: async (reminderId: number) => {
-      const reminders = getReminders(userId);
-      saveReminders(userId, reminders.filter(r => r.id !== reminderId));
+      const userId = uid();
+      saveReminders(userId, getReminders(userId).filter(r => r.id !== reminderId));
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['reminders'] });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['reminders'] }),
   });
 }
 
-// ─── Targets ────────────────────────────────────────────────────────────────
+// ─── Targets ──────────────────────────────────────────────────────────────────
 
 export function useGetTargets() {
-  const userId = useUserId();
-
-  return useQuery({
-    queryKey: ['targets', userId],
-    queryFn: () => getTargets(userId),
+  return useQuery<LocalTarget[]>({
+    queryKey: ['targets'],
+    queryFn: () => getTargets(uid()),
   });
 }
 
 export function useAddTarget() {
   const queryClient = useQueryClient();
-  const userId = useUserId();
-
   return useMutation({
     mutationFn: async ({ title, description, deadline }: { title: string; description: string; deadline: number }) => {
+      const userId = uid();
       const targets = getTargets(userId);
       const id = getNextId(userId, 'target');
-      const newTarget = { id, title, description, deadline, completed: false };
-      saveTargets(userId, [...targets, newTarget]);
+      targets.push({ id, title, description, deadline, completed: false });
+      saveTargets(userId, targets);
       return id;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['targets'] });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['targets'] }),
   });
 }
 
 export function useCompleteTarget() {
   const queryClient = useQueryClient();
-  const userId = useUserId();
-
   return useMutation({
     mutationFn: async ({ targetId, completed }: { targetId: number; completed: boolean }) => {
+      const userId = uid();
       const targets = getTargets(userId);
       saveTargets(userId, targets.map(t => t.id === targetId ? { ...t, completed } : t));
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['targets'] });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['targets'] }),
   });
 }
 
 export function useDeleteTarget() {
   const queryClient = useQueryClient();
-  const userId = useUserId();
-
   return useMutation({
     mutationFn: async (targetId: number) => {
-      const targets = getTargets(userId);
-      saveTargets(userId, targets.filter(t => t.id !== targetId));
+      const userId = uid();
+      saveTargets(userId, getTargets(userId).filter(t => t.id !== targetId));
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['targets'] });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['targets'] }),
   });
 }
 
-// ─── Revision Tasks ─────────────────────────────────────────────────────────
+// ─── Revision Tasks ───────────────────────────────────────────────────────────
 
 export function useGetRevisionTasks() {
-  const userId = useUserId();
-
-  return useQuery({
-    queryKey: ['revisionTasks', userId],
-    queryFn: () => getRevisionTasks(userId),
+  return useQuery<LocalRevisionTask[]>({
+    queryKey: ['revisionTasks'],
+    queryFn: () => getRevisionTasks(uid()),
   });
 }
 
 export function useGetPendingRevisionTasks() {
-  const userId = useUserId();
-
-  return useQuery({
-    queryKey: ['revisionTasks', userId, 'pending'],
-    queryFn: () => {
-      const all = getRevisionTasks(userId);
-      return all.filter(r => !r.completed);
-    },
+  return useQuery<LocalRevisionTask[]>({
+    queryKey: ['pendingRevisionTasks'],
+    queryFn: () => getRevisionTasks(uid()).filter(r => !r.completed),
   });
 }
 
 export function useMarkRevisionTaskCompleted() {
   const queryClient = useQueryClient();
-  const userId = useUserId();
-
   return useMutation({
     mutationFn: async ({ revisionId, completed }: { revisionId: number; completed: boolean }) => {
+      const userId = uid();
       const tasks = getRevisionTasks(userId);
       saveRevisionTasks(userId, tasks.map(r => r.id === revisionId ? { ...r, completed } : r));
       if (completed) updateStreak(userId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['revisionTasks'] });
-      queryClient.invalidateQueries({ queryKey: ['streak'] });
+      queryClient.invalidateQueries({ queryKey: ['pendingRevisionTasks'] });
+      queryClient.invalidateQueries({ queryKey: ['studyStreak'] });
     },
   });
 }
 
-// ─── Study Streak ────────────────────────────────────────────────────────────
+// ─── Study Streak ─────────────────────────────────────────────────────────────
 
 export function useGetStudyStreak() {
-  const userId = useUserId();
-
-  return useQuery({
-    queryKey: ['streak', userId],
-    queryFn: () => getStudyStreak(userId),
+  return useQuery<LocalStudyStreak>({
+    queryKey: ['studyStreak'],
+    queryFn: () => getStudyStreak(uid()),
   });
 }
 
 export function useRecordDailyLogin() {
   const queryClient = useQueryClient();
-  const userId = useUserId();
-
   return useMutation({
     mutationFn: async () => {
+      const userId = uid();
       return updateStreak(userId);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['streak'] });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['studyStreak'] }),
   });
 }
 
-// ─── Achievements ────────────────────────────────────────────────────────────
+// ─── Achievements ─────────────────────────────────────────────────────────────
 
 export function useGetAchievements() {
-  const userId = useUserId();
-
-  return useQuery({
-    queryKey: ['achievements', userId],
-    queryFn: () => getAchievements(userId),
+  return useQuery<LocalAchievement[]>({
+    queryKey: ['achievements'],
+    queryFn: () => getAchievements(uid()),
   });
 }
 
-// ─── Progress Summary ────────────────────────────────────────────────────────
+// ─── Progress Summary ─────────────────────────────────────────────────────────
 
 export function useGetProgressSummary() {
-  const userId = useUserId();
-
   return useQuery({
-    queryKey: ['progress', userId],
+    queryKey: ['progressSummary'],
     queryFn: () => {
-      initializeUserData(userId);
+      const userId = uid();
       const subjects = getSubjects(userId);
       const chapters = getChapters(userId);
       const tasks = getPlannerTasks(userId);
@@ -817,14 +661,13 @@ export function useGetProgressSummary() {
   });
 }
 
-// ─── Personal Best ───────────────────────────────────────────────────────────
+// ─── Personal Best ────────────────────────────────────────────────────────────
 
 export function useGetPersonalBest() {
-  const userId = useUserId();
-
   return useQuery({
-    queryKey: ['personalBest', userId],
+    queryKey: ['personalBest'],
     queryFn: () => {
+      const userId = uid();
       const attempts = getTestAttempts(userId);
       const chapters = getChapters(userId);
       const questions = getQuestions(userId);
@@ -838,7 +681,9 @@ export function useGetPersonalBest() {
       });
 
       const fastestTime = attempts.reduce((acc, a) => {
-        if (acc === 0 || (a.report.timeTaken > 0 && a.report.timeTaken < acc)) return a.report.timeTaken;
+        if (acc === 0 || (a.report.timeTaken > 0 && a.report.timeTaken < acc)) {
+          return a.report.timeTaken;
+        }
         return acc;
       }, 0);
 
@@ -868,4 +713,56 @@ export function useGetPersonalBest() {
       };
     },
   });
+}
+
+// ─── Child Messages (Student inbox) ──────────────────────────────────────────
+
+export function useGetChildMessages(currentUsername: string | null) {
+  const queryClient = useQueryClient();
+
+  const query = useQuery<ParentMessage[]>({
+    queryKey: ['childMessages', currentUsername],
+    queryFn: () => {
+      if (!currentUsername) return [];
+      return getChildMessages(currentUsername);
+    },
+    enabled: !!currentUsername,
+    refetchInterval: 10000,
+  });
+
+  const unreadCount = (query.data ?? []).filter(m => !m.read).length;
+
+  const markAsRead = (messageId: string) => {
+    // Fix: markMessageAsReadLS now takes only the messageId
+    markMessageAsReadLS(messageId);
+    queryClient.invalidateQueries({ queryKey: ['childMessages', currentUsername] });
+  };
+
+  return { ...query, unreadCount, markAsRead };
+}
+
+// ─── Parent Replies (Parent inbox) ───────────────────────────────────────────
+
+export function useGetParentReplies(currentParentUsername: string | null) {
+  const queryClient = useQueryClient();
+
+  const query = useQuery<ParentReply[]>({
+    queryKey: ['parentReplies', currentParentUsername],
+    queryFn: () => {
+      if (!currentParentUsername) return [];
+      return getParentReplies(currentParentUsername);
+    },
+    enabled: !!currentParentUsername,
+    refetchInterval: 10000,
+  });
+
+  const unseenCount = (query.data ?? []).filter(r => !r.seen).length;
+
+  const markAsSeen = (replyId: string) => {
+    // Fix: markParentReplyAsSeenLS now takes only the replyId
+    markParentReplyAsSeenLS(replyId);
+    queryClient.invalidateQueries({ queryKey: ['parentReplies', currentParentUsername] });
+  };
+
+  return { ...query, unseenCount, markAsSeen };
 }

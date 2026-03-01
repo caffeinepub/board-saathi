@@ -1,53 +1,41 @@
 {
   "kind": "spec_vs_diff_report",
   "version": "1.0",
-  "generatedAt": "2026-02-28T08:52:58.799Z",
-  "summary": "The diff implements the core parent portal features including localStorage data layer functions, login page parent buttons/dialogs, parent dashboard page, notification system in Layout, and route protection in App.tsx. Most requirements appear well-covered, but there are some specific acceptance criteria gaps based on the available truncated diff evidence.",
+  "generatedAt": "2026-02-28T12:55:07.780Z",
+  "summary": "All six requirements are implemented in the diff. REQ-1 (DaysLeftBanner), REQ-2 (upcoming reminders/targets on Dashboard), REQ-3 (CalendarClock icon in header), REQ-4 (TimerPage with full CRUD and live countdown), REQ-5 (BottomNavBar), and REQ-6 (TargetMotivationWidget) are all present. One minor gap exists around bottom padding for all pages. One hallucinated feature is the addition of seconds to the countdown display, which was not requested.",
   "missing_requirements": [
     {
-      "requirement": "Notes section on parent dashboard should show uploaded notes count per subject/chapter with the ability to see note titles",
-      "reason": "The diff is truncated for ParentDashboard.tsx and the expandedSections state includes 'notes: false', but there is no visible evidence that note titles are displayed or that a notes count per subject/chapter section is fully implemented with title visibility.",
+      "id": "REQ-5",
+      "requirement": "The bar does not overlap main page content (page content has bottom padding)",
+      "reason": "The diff shows BottomNavBar is added and fixed at the bottom, but there is no explicit evidence in the truncated diff of bottom padding being added to page content wrappers across all pages to prevent overlap. Only some pages show pb-24 in the truncated content.",
       "evidence": [
-        "frontend/src/pages/ParentDashboard.tsx"
-      ]
-    },
-    {
-      "requirement": "Flashcards section should show per-card flip/review count",
-      "reason": "The diff is truncated for ParentDashboard.tsx; expandedSections includes 'flashcards: false' but the rendering logic for per-card flip/review counts is not visible in the truncated output.",
-      "evidence": [
-        "frontend/src/pages/ParentDashboard.tsx"
-      ]
-    },
-    {
-      "requirement": "Question Bank section should show all questions grouped by subject/chapter with filtering",
-      "reason": "expandedSections includes 'questionBank: false' but the rendering logic is truncated; cannot confirm full implementation of subject/chapter filtering.",
-      "evidence": [
-        "frontend/src/pages/ParentDashboard.tsx"
-      ]
-    },
-    {
-      "requirement": "Send button on comment box should be disabled when textarea is empty",
-      "reason": "The handleSendComment function checks if commentText is empty but the button disabled attribute rendering is in the truncated portion of ParentDashboard.tsx and cannot be confirmed.",
-      "evidence": [
-        "frontend/src/pages/ParentDashboard.tsx"
-      ]
-    },
-    {
-      "requirement": "getLinkedChildData() should return planner tasks as part of the child data",
-      "reason": "The localStorageService.ts is truncated; the LinkedChildData interface and getLinkedChildData function contents are not visible to confirm planner tasks are included.",
-      "evidence": [
-        "frontend/src/utils/localStorageService.ts"
+        "frontend/src/components/BottomNavBar.tsx",
+        "frontend/src/pages/ProfilePage.tsx"
       ]
     }
   ],
-  "hallucinated_features": [],
-  "confidence": 0.62,
+  "hallucinated_features": [
+    {
+      "description": "Timer countdown includes a seconds field in the live display",
+      "reason": "REQ-4 specifies the live countdown should show months, days, hours, and minutes only. The TimerPage implementation computes and likely displays seconds as well, as the computeCountdown function returns a seconds field.",
+      "evidence": [
+        "frontend/src/pages/TimerPage.tsx"
+      ]
+    }
+  ],
+  "confidence": 0.82,
   "changed_files": [
     "frontend-file-summaries.txt",
     "frontend/src/App.tsx",
+    "frontend/src/components/BottomNavBar.tsx",
     "frontend/src/components/Layout.tsx",
-    "frontend/src/pages/LoginPage.tsx",
+    "frontend/src/components/TargetMotivationWidget.tsx",
+    "frontend/src/hooks/useQueries.ts",
+    "frontend/src/pages/Dashboard.tsx",
     "frontend/src/pages/ParentDashboard.tsx",
+    "frontend/src/pages/ProfilePage.tsx",
+    "frontend/src/pages/StudentMessagesPage.tsx",
+    "frontend/src/pages/TimerPage.tsx",
     "frontend/src/utils/localStorageService.ts",
     "project_state.json"
   ]

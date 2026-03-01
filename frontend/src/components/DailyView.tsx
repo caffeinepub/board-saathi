@@ -34,15 +34,13 @@ export default function DailyView({ year, month, date }: DailyViewProps) {
       toast.error('Please enter a task title');
       return;
     }
-    // Build a timestamp for the selected date
-    const dateObj = new Date(year, month - 1, date, 9, 0, 0);
-    const dateTs = dateObj.getTime();
-
     try {
       await addTask.mutateAsync({
         title: title.trim(),
         description: description.trim(),
-        date: dateTs,
+        year,
+        month,
+        date,
         startTime,
       });
       toast.success('Task added!');
@@ -138,7 +136,7 @@ export default function DailyView({ year, month, date }: DailyViewProps) {
       {tasks.length === 0 && !showForm ? (
         <div className="text-center py-8 text-muted-foreground">
           <p className="text-sm">No tasks for this day</p>
-          <p className="text-xs mt-1">Click "Add Task" to get started</p>
+          <p className="text-xs mt-1">Click &quot;Add Task&quot; to get started</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -172,7 +170,7 @@ export default function DailyView({ year, month, date }: DailyViewProps) {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 text-destructive hover:text-destructive flex-shrink-0"
+                className="h-7 w-7 text-destructive hover:text-destructive shrink-0"
                 onClick={() => handleDelete(task.id)}
                 disabled={deleteTask.isPending}
               >

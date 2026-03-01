@@ -1,72 +1,87 @@
 {
   "kind": "coverage_report",
   "version": "1.0",
-  "generatedAt": "2026-02-28T08:52:58.804Z",
+  "generatedAt": "2026-02-28T12:55:07.783Z",
   "sources": {
     "buildRequest": true,
     "implementationPlan": true
   },
   "requirements": {
-    "total": 5,
-    "implemented": 5,
+    "total": 6,
+    "implemented": 6,
     "items": [
       {
         "id": "REQ-1",
-        "summary": "Add a 'Parent Account' section to the localStorage data layer: store parent accounts with fields { parentUsername, passwordHash, childUsername } where childUsername links to a registered student account. Add functions: createParentAccount(parentUsername, childPassword, childUsername), parentLogin(parentUsername, childPassword) that validates by matching childPassword against the linked student's stored password hash, getParentSession(), setParentSession(), clearParentSession(), and getLinkedChildData(parentUsername) that returns the child student's full profile and all associated data (subjects, chapters, notes, questions, mock tests with attempt history, flashcards with usage counts, question bank entries, planner tasks, targets, streaks, progress stats).",
+        "summary": "Display a 'Days Left to End of Month' countdown banner at the very top of the homepage (Dashboard). Calculate the number of days remaining in the current calendar month and show it prominently (e.g., '12 days left in this month').",
         "status": "implemented",
         "plannedFiles": [
-          "frontend/src/utils/localStorageService.ts"
+          "frontend/src/pages/Dashboard.tsx"
         ],
         "matchedFiles": [
-          "frontend/src/utils/localStorageService.ts"
+          "frontend/src/pages/Dashboard.tsx"
         ]
       },
       {
         "id": "REQ-2",
-        "summary": "On the LoginPage, add two new buttons below the existing student login/register buttons: 'Login as Parent' and 'Create Parent Account'. 'Create Parent Account' opens a dialog/modal with fields: Parent Username, Child's Username (the registered student), and Child's Password (for verification). On submission, validate that the child username exists and the password matches, then create the parent account. 'Login as Parent' opens a dialog with fields: Parent Username and Child's Password, authenticates via parentLogin(), and on success redirects to the Parent Dashboard route.",
+        "summary": "On the homepage (Dashboard), show a section that lists the user's upcoming reminders and active targets so they are immediately visible without navigating away. Pull data from existing localStorage reminders and targets. Show title, deadline/time, and a short status indicator for each item.",
         "status": "implemented",
         "plannedFiles": [
-          "frontend/src/pages/LoginPage.tsx"
+          "frontend/src/pages/Dashboard.tsx"
         ],
         "matchedFiles": [
-          "frontend/src/pages/LoginPage.tsx"
+          "frontend/src/pages/Dashboard.tsx"
         ]
       },
       {
         "id": "REQ-3",
-        "summary": "Create a new Parent Dashboard page (route: /parent-dashboard). At the top of the page, display the parent's username prominently, and directly beneath it display the child's full name with a label like 'Viewing: [Child's Name]'. Throughout the page, all content labels must use personalized phrasing such as 'Your son/daughter [Name]'s subjects', 'Your son/daughter [Name]'s mock tests', etc., substituting the child's actual name and using 'son' or 'daughter' based on data available (default to 'child' if gender is not stored). The dashboard must include the following sections: (1) Overall Performance summary card showing chapter completion %, average mock test score, study streak, and targets met. (2) Subjects list showing all subjects with chapter progress bars. (3) Uploaded Notes count per subject/chapter with the ability to see note titles. (4) Questions added per chapter. (5) Mock Tests — list all mock tests with status 'Attempted' or 'Not Attempted', best score, and attempt count. (6) Flashcards — show total flashcard count and how many times each card has been reviewed/flipped. (7) Question Bank — list of all questions in the question bank filtered by subject/chapter. (8) A Comment Box section in a prominent center position on the dashboard with a label 'Send feedback to [Child's Name]' and three styled buttons: 'Scold 😠', 'Comment 💬', 'Appreciate 🌟' that pre-fill the textarea with a tone prefix (e.g., '⚠️ [Scold]: ', '💬 [Comment]: ', '🌟 [Appreciate]: '), plus a text area for the message and a Send button.",
+        "summary": "Add a calendar-clock icon button in the top-right area of the homepage header, positioned beside the existing message icon. Tapping this icon navigates the user to a new Timer/Countdown page.",
         "status": "implemented",
         "plannedFiles": [
-          "frontend/src/pages/ParentDashboard.tsx"
+          "frontend/src/pages/Dashboard.tsx"
         ],
         "matchedFiles": [
-          "frontend/src/pages/ParentDashboard.tsx"
+          "frontend/src/pages/Dashboard.tsx"
         ]
       },
       {
         "id": "REQ-4",
-        "summary": "Implement a notification system in localStorage: add functions addNotification(username, notification: { id, from, type: 'scold'|'comment'|'appreciate', message, timestamp, read: false }) and getNotifications(username), markNotificationRead(username, notificationId). When a parent sends a comment from the Parent Dashboard, call addNotification() targeting the child student's username. In the student-facing Layout (sidebar/header), add a notification bell icon that shows an unread count badge. Clicking it opens a dropdown/panel listing all notifications with sender ('From: [Parent Username]'), type badge (Scold/Comment/Appreciate with appropriate color), message text, and timestamp. Clicking a notification marks it as read and clears the badge count.",
+        "summary": "Create a new Timer/Countdown page reachable from the calendar-clock icon. The page must: (1) Allow adding a new timer with a 'Start' date field (month + day) and an 'End' date field (year + month + day). (2) After saving, display a live countdown showing months, days, hours, and minutes remaining until the End date in large, prominent text. (3) Support multiple simultaneous timers listed on the page. (4) Each timer entry shows its label/end-date and live countdown. (5) Provide a delete option for each timer.",
         "status": "implemented",
         "plannedFiles": [
-          "frontend/src/utils/localStorageService.ts",
-          "frontend/src/components/Layout.tsx"
+          "frontend/src/pages/TimerPage.tsx",
+          "frontend/src/App.tsx",
+          "frontend/src/utils/localStorageService.ts"
         ],
         "matchedFiles": [
-          "frontend/src/utils/localStorageService.ts",
-          "frontend/src/components/Layout.tsx"
+          "frontend/src/pages/TimerPage.tsx",
+          "frontend/src/App.tsx",
+          "frontend/src/utils/localStorageService.ts"
         ]
       },
       {
         "id": "REQ-5",
-        "summary": "Add the Parent Dashboard route (/parent-dashboard) to the TanStack Router configuration in App.tsx. The route must be protected: if no parent session is active, redirect to /login. Include a logout option on the Parent Dashboard that clears the parent session and redirects to /login. Do not alter any existing student routes or auth guards.",
+        "summary": "Add a persistent bottom navigation bar that is visible on every page of the app. The bar must contain five buttons with icons and labels: Home, Subject, Question, Reminder, and Target. Each button navigates to its corresponding page. The bar must remain fixed at the bottom of the screen and not be hidden by page content.",
         "status": "implemented",
         "plannedFiles": [
-          "frontend/src/App.tsx",
-          "frontend/src/pages/ParentDashboard.tsx"
+          "frontend/src/components/BottomNavBar.tsx",
+          "frontend/src/components/Layout.tsx"
         ],
         "matchedFiles": [
-          "frontend/src/App.tsx",
-          "frontend/src/pages/ParentDashboard.tsx"
+          "frontend/src/components/BottomNavBar.tsx",
+          "frontend/src/components/Layout.tsx"
+        ]
+      },
+      {
+        "id": "REQ-6",
+        "summary": "Add a 'Target 🎯 100%' motivational widget on the homepage (Dashboard). Style it with a bold, winner/champion aesthetic — use gold/trophy colors, celebratory typography, and an energetic design to keep students motivated. Show the user's current overall target completion percentage and a message encouraging them to reach 100%.",
+        "status": "implemented",
+        "plannedFiles": [
+          "frontend/src/components/TargetMotivationWidget.tsx",
+          "frontend/src/pages/Dashboard.tsx"
+        ],
+        "matchedFiles": [
+          "frontend/src/components/TargetMotivationWidget.tsx",
+          "frontend/src/pages/Dashboard.tsx"
         ]
       }
     ]
@@ -77,9 +92,15 @@
     "frontend-file-summaries.txt",
     "frontend-implementation-plan.json",
     "frontend/src/App.tsx",
+    "frontend/src/components/BottomNavBar.tsx",
     "frontend/src/components/Layout.tsx",
-    "frontend/src/pages/LoginPage.tsx",
+    "frontend/src/components/TargetMotivationWidget.tsx",
+    "frontend/src/hooks/useQueries.ts",
+    "frontend/src/pages/Dashboard.tsx",
     "frontend/src/pages/ParentDashboard.tsx",
+    "frontend/src/pages/ProfilePage.tsx",
+    "frontend/src/pages/StudentMessagesPage.tsx",
+    "frontend/src/pages/TimerPage.tsx",
     "frontend/src/utils/localStorageService.ts",
     "project_state.json",
     "scratch/component-selection.json",

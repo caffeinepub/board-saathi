@@ -1,248 +1,328 @@
-import { useEffect } from 'react';
-import { useNavigate } from '@tanstack/react-router';
-import {
-  useGetCallerUserProfile,
-  useGetProgressSummary,
-  useGetStudyStreak,
-  useRecordDailyLogin,
-  useGetPendingRevisionTasks,
-} from '../hooks/useQueries';
-import { getCurrentUserId, getUserAccountById } from '../utils/localStorageService';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
+import React, { useMemo } from 'react';
+import { Link, useNavigate } from '@tanstack/react-router';
 import {
   BookOpen,
-  Calendar,
-  ClipboardList,
-  TrendingUp,
   Target,
-  RefreshCw,
-  Trophy,
-  Layers,
+  Calendar,
+  TrendingUp,
+  Clock,
+  MessageSquare,
+  CalendarClock,
+  Bell,
   ChevronRight,
-  Star,
   Flame,
+  CheckCircle2,
 } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  useGetTargets,
+  useGetReminders,
+  useGetStudyStreak,
+  useGetProgressSummary,
+  useGetChildMessages,
+} from '@/hooks/useQueries';
+import {
+  getCurrentUserId,
+  getUserAccountById,
+  isGuest,
+} from '@/utils/localStorageService';
+import TargetMotivationWidget from '@/components/TargetMotivationWidget';
+
+function DaysLeftBanner() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  const today = now.getDate();
+  const daysLeft = lastDay - today;
+
+  const urgencyColor =
+    daysLeft <= 3
+      ? 'from-red-500 to-rose-600'
+      : daysLeft <= 7
+      ? 'from-orange-500 to-amber-500'
+      : 'from-primary to-accent';
+
+  const monthName = now.toLocaleString('default', { month: 'long' });
+
+  return (
+    <div className={`rounded-2xl bg-gradient-to-r ${urgencyColor} p-4 text-white shadow-md`}>
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-white/80 text-xs font-semibold uppercase tracking-widest mb-0.5">
+            {monthName} {year}
+          </p>
+          <div className="flex items-baseline gap-2">
+            <span className="text-4xl font-black leading-none">{daysLeft}</span>
+            <span className="text-lg font-bold">days left</span>
+          </div>
+          <p className="text-white/80 text-xs mt-1">to end of this month</p>
+        </div>
+        <div className="flex flex-col items-center">
+          <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center">
+            <Calendar className="w-8 h-8 text-white" />
+          </div>
+          <span className="text-white/70 text-[10px] mt-1 font-medium">
+            Day {today}/{lastDay}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Dashboard() {
   const navigate = useNavigate();
-
-  // Get current user info from localStorage
   const userId = getCurrentUserId();
+  const guest = isGuest();
   const account = userId && userId !== 'guest' ? getUserAccountById(userId) : null;
-  const displayName = account?.name ?? (userId === 'guest' ? 'Guest' : 'Student');
+  const userName = account?.name ?? (guest ? 'Guest' : 'Student');
+  const currentUsername = account?.username ?? null;
 
-  const { data: progress, isLoading: progressLoading } = useGetProgressSummary();
+  const { data: targets = [] } = useGetTargets();
+  const { data: reminders = [] } = useGetReminders();
   const { data: streak } = useGetStudyStreak();
-  const { data: pendingRevisions } = useGetPendingRevisionTasks();
-  const recordLogin = useRecordDailyLogin();
+  const { data: progress } = useGetProgressSummary();
+  const { unreadCount } = useGetChildMessages(guest ? null : currentUsername);
 
-  useEffect(() => {
-    recordLogin.mutate();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const now = Date.now();
 
-  const totalChapters = progress?.subjectProgress.reduce((sum, s) => sum + s.totalChapters, 0) ?? 0;
-  const completedChapters = progress?.subjectProgress.reduce((sum, s) => sum + s.completedChapters, 0) ?? 0;
-  const overallProgress = totalChapters > 0 ? Math.round((completedChapters / totalChapters) * 100) : 0;
+  // Upcoming reminders (future, sorted by dateTime)
+  const upcomingReminders = useMemo(() => {
+    return reminders
+      .filter(r => r.dateTime > now)
+      .sort((a, b) => a.dateTime - b.dateTime)
+      .slice(0, 3);
+  }, [reminders, now]);
 
-  const quickStats = [
-    {
-      label: 'Chapters Done',
-      value: `${completedChapters}/${totalChapters}`,
-      icon: BookOpen,
-      color: 'text-blue-500',
-      bg: 'bg-blue-50 dark:bg-blue-950/30',
-      path: '/subjects',
-    },
-    {
-      label: 'Mock Tests',
-      value: String(progress?.totalMockTestsAttempted ?? 0),
-      icon: ClipboardList,
-      color: 'text-purple-500',
-      bg: 'bg-purple-50 dark:bg-purple-950/30',
-      path: '/mock-tests',
-    },
-    {
-      label: 'Avg Score',
-      value: `${progress?.mockTestAverageScore ?? 0}%`,
-      icon: TrendingUp,
-      color: 'text-green-500',
-      bg: 'bg-green-50 dark:bg-green-950/30',
-      path: '/progress',
-    },
-    {
-      label: 'Pending Revisions',
-      value: String(pendingRevisions?.length ?? 0),
-      icon: RefreshCw,
-      color: 'text-orange-500',
-      bg: 'bg-orange-50 dark:bg-orange-950/30',
-      path: '/revision',
-    },
-  ];
+  // Active targets (not completed, sorted by deadline)
+  const activeTargets = useMemo(() => {
+    return targets
+      .filter(t => !t.completed)
+      .sort((a, b) => a.deadline - b.deadline)
+      .slice(0, 3);
+  }, [targets]);
 
-  const quickLinks = [
-    { label: 'Planner', icon: Calendar, path: '/planner', desc: 'Plan your daily study' },
-    { label: 'Flashcards', icon: Layers, path: '/flashcards', desc: 'Review with flashcards' },
-    { label: 'Mock Tests', icon: ClipboardList, path: '/mock-tests', desc: 'Test your knowledge' },
-    { label: 'Achievements', icon: Trophy, path: '/achievements', desc: 'View your badges' },
-    { label: 'Targets', icon: Target, path: '/targets', desc: 'Track your goals' },
-    { label: 'Revision', icon: RefreshCw, path: '/revision', desc: 'Spaced repetition' },
-  ];
+  const currentStreak = streak ? Number(streak.currentStreak) : 0;
+  const totalChapters = progress?.subjectProgress.reduce(
+    (sum, sp) => sum + Number(sp.totalChapters), 0
+  ) ?? 0;
+  const completedChapters = progress?.subjectProgress.reduce(
+    (sum, sp) => sum + Number(sp.completedChapters), 0
+  ) ?? 0;
+
+  const formatDeadline = (ts: number) => {
+    const d = new Date(ts);
+    return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
+  const formatReminderTime = (ts: number) => {
+    const d = new Date(ts);
+    return d.toLocaleString('en-IN', {
+      day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+    });
+  };
 
   return (
-    <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-6">
+    <div className="min-h-screen bg-background pb-24">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          {progressLoading ? (
-            <Skeleton className="h-8 w-48 mb-2" />
-          ) : (
-            <h1 className="text-2xl md:text-3xl font-bold text-foreground">
-              Hello, {displayName}! 👋
-            </h1>
-          )}
-          <p className="text-muted-foreground text-sm mt-1">
-            {new Date().toLocaleDateString('en-IN', {
-              weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-            })}
-          </p>
+      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border">
+        <div className="flex items-center justify-between px-4 py-3">
+          <div>
+            <p className="text-xs text-muted-foreground">Welcome back,</p>
+            <h1 className="text-lg font-black text-foreground leading-tight">{userName} 👋</h1>
+          </div>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="relative"
+              onClick={() => navigate({ to: '/timer' })}
+              title="Countdown Timers"
+            >
+              <CalendarClock className="w-5 h-5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="relative"
+              onClick={() => navigate({ to: '/messages' })}
+              title="Messages"
+            >
+              <MessageSquare className="w-5 h-5" />
+              {unreadCount > 0 && (
+                <span className="absolute top-1 right-1 w-4 h-4 bg-destructive text-destructive-foreground text-[9px] font-bold rounded-full flex items-center justify-center">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </Button>
+          </div>
         </div>
-        {account && (
-          <Badge variant="secondary" className="hidden sm:flex items-center gap-1">
-            <Star className="w-3 h-3" />
-            Class {account.studentClass}
-          </Badge>
-        )}
-        {userId === 'guest' && (
-          <Badge variant="outline" className="hidden sm:flex items-center gap-1 text-amber-600 border-amber-300">
-            Guest Mode
-          </Badge>
-        )}
       </div>
 
-      {/* Streak + Overall Progress */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Card>
-          <CardContent className="p-5">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 rounded-xl bg-orange-100 flex items-center justify-center">
-                <Flame className="w-5 h-5 text-orange-500" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Study Streak</p>
-                <p className="text-2xl font-bold text-orange-500">{streak?.currentStreak ?? 0} days</p>
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground">Best: {streak?.topStreak ?? 0} days</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Overall Progress</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-end gap-2 mb-3">
-              <span className="text-3xl font-bold text-foreground">{overallProgress}%</span>
-              <span className="text-muted-foreground text-sm mb-1">complete</span>
-            </div>
-            <Progress value={overallProgress} className="h-2" />
-            <p className="text-xs text-muted-foreground mt-2">
-              {completedChapters} of {totalChapters} chapters completed
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+      <div className="px-4 py-4 space-y-4">
+        {/* Days Left Banner */}
+        <DaysLeftBanner />
 
-      {/* Quick Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {quickStats.map((stat) => {
-          const Icon = stat.icon;
-          return (
-            <button key={stat.label} onClick={() => navigate({ to: stat.path })} className="text-left">
-              <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">
-                <CardContent className="p-4">
-                  <div className={`w-10 h-10 rounded-xl ${stat.bg} flex items-center justify-center mb-3`}>
-                    <Icon className={`w-5 h-5 ${stat.color}`} />
+        {/* Target Motivation Widget */}
+        <TargetMotivationWidget targets={targets} />
+
+        {/* Quick Stats */}
+        <div className="grid grid-cols-3 gap-3">
+          <Card className="border-0 bg-primary/10">
+            <CardContent className="p-3 text-center">
+              <Flame className="w-5 h-5 text-orange-500 mx-auto mb-1" />
+              <p className="text-xl font-black text-foreground">{currentStreak}</p>
+              <p className="text-[10px] text-muted-foreground font-medium">Day Streak</p>
+            </CardContent>
+          </Card>
+          <Card className="border-0 bg-green-500/10">
+            <CardContent className="p-3 text-center">
+              <BookOpen className="w-5 h-5 text-green-600 mx-auto mb-1" />
+              <p className="text-xl font-black text-foreground">{completedChapters}/{totalChapters}</p>
+              <p className="text-[10px] text-muted-foreground font-medium">Chapters</p>
+            </CardContent>
+          </Card>
+          <Card className="border-0 bg-blue-500/10">
+            <CardContent className="p-3 text-center">
+              <TrendingUp className="w-5 h-5 text-blue-600 mx-auto mb-1" />
+              <p className="text-xl font-black text-foreground">
+                {progress ? Number(progress.mockTestAverageScore) : 0}%
+              </p>
+              <p className="text-[10px] text-muted-foreground font-medium">Avg Score</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Upcoming Reminders */}
+        {upcomingReminders.length > 0 && (
+          <Card>
+            <CardHeader className="pb-2 pt-4 px-4">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-bold flex items-center gap-2">
+                  <Bell className="w-4 h-4 text-primary" />
+                  Upcoming Reminders
+                </CardTitle>
+                <Link to="/reminders">
+                  <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 text-primary">
+                    View all <ChevronRight className="w-3 h-3" />
+                  </Button>
+                </Link>
+              </div>
+            </CardHeader>
+            <CardContent className="px-4 pb-4 space-y-2">
+              {upcomingReminders.map(reminder => (
+                <div
+                  key={reminder.id}
+                  className="flex items-start gap-3 p-2.5 rounded-xl bg-muted/50 border border-border"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                    <Bell className="w-4 h-4 text-primary" />
                   </div>
-                  <p className="text-2xl font-bold text-foreground">{stat.value}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{stat.label}</p>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-foreground truncate">{reminder.text}</p>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                      <Clock className="w-3 h-3" />
+                      {formatReminderTime(reminder.dateTime)}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Active Targets */}
+        {activeTargets.length > 0 && (
+          <Card>
+            <CardHeader className="pb-2 pt-4 px-4">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-bold flex items-center gap-2">
+                  <Target className="w-4 h-4 text-primary" />
+                  Active Targets
+                </CardTitle>
+                <Link to="/targets">
+                  <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 text-primary">
+                    View all <ChevronRight className="w-3 h-3" />
+                  </Button>
+                </Link>
+              </div>
+            </CardHeader>
+            <CardContent className="px-4 pb-4 space-y-2">
+              {activeTargets.map(target => {
+                const daysUntil = Math.ceil((target.deadline - now) / (1000 * 60 * 60 * 24));
+                const isUrgent = daysUntil <= 3 && daysUntil >= 0;
+                const isOverdue = daysUntil < 0;
+                return (
+                  <div
+                    key={target.id}
+                    className="flex items-start gap-3 p-2.5 rounded-xl bg-muted/50 border border-border"
+                  >
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                      isOverdue ? 'bg-destructive/10' : isUrgent ? 'bg-orange-500/10' : 'bg-primary/10'
+                    }`}>
+                      <Target className={`w-4 h-4 ${
+                        isOverdue ? 'text-destructive' : isUrgent ? 'text-orange-500' : 'text-primary'
+                      }`} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-foreground truncate">{target.title}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {formatDeadline(target.deadline)}
+                        </p>
+                        {isOverdue && (
+                          <Badge variant="destructive" className="text-[9px] h-4 px-1.5">Overdue</Badge>
+                        )}
+                        {isUrgent && !isOverdue && (
+                          <Badge className="text-[9px] h-4 px-1.5 bg-orange-500">Due soon</Badge>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Quick Links */}
+        <div className="grid grid-cols-2 gap-3">
+          {[
+            { to: '/subjects', icon: BookOpen, label: 'Subjects', color: 'text-blue-600', bg: 'bg-blue-500/10' },
+            { to: '/planner', icon: Calendar, label: 'Planner', color: 'text-green-600', bg: 'bg-green-500/10' },
+            { to: '/mock-tests', icon: TrendingUp, label: 'Mock Tests', color: 'text-purple-600', bg: 'bg-purple-500/10' },
+            { to: '/progress', icon: CheckCircle2, label: 'Progress', color: 'text-orange-600', bg: 'bg-orange-500/10' },
+          ].map(({ to, icon: Icon, label, color, bg }) => (
+            <Link key={to} to={to}>
+              <Card className="hover:shadow-md transition-shadow cursor-pointer border border-border">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-xl ${bg} flex items-center justify-center`}>
+                    <Icon className={`w-5 h-5 ${color}`} />
+                  </div>
+                  <span className="font-semibold text-sm text-foreground">{label}</span>
                 </CardContent>
               </Card>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Subject Progress */}
-      {progress && progress.subjectProgress.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base">Subject Progress</CardTitle>
-              <Button variant="ghost" size="sm" onClick={() => navigate({ to: '/subjects' })}>
-                View All <ChevronRight className="w-4 h-4 ml-1" />
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {progress.subjectProgress.slice(0, 4).map((sp) => {
-              const pct = sp.totalChapters > 0
-                ? Math.round((sp.completedChapters / sp.totalChapters) * 100)
-                : 0;
-              return (
-                <div key={sp.subjectId}>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="font-medium truncate">{sp.subjectName}</span>
-                    <span className="text-muted-foreground flex-shrink-0 ml-2">
-                      {sp.completedChapters}/{sp.totalChapters}
-                    </span>
-                  </div>
-                  <Progress value={pct} className="h-1.5" />
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Quick Links */}
-      <div>
-        <h2 className="text-base font-semibold mb-3">Quick Access</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          {quickLinks.map((link) => {
-            const Icon = link.icon;
-            return (
-              <button
-                key={link.path}
-                onClick={() => navigate({ to: link.path })}
-                className="flex flex-col items-center gap-2 p-4 rounded-xl bg-card border hover:shadow-md hover:border-primary/30 transition-all text-center"
-              >
-                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                  <Icon className="w-5 h-5 text-primary" />
-                </div>
-                <span className="text-xs font-medium text-foreground">{link.label}</span>
-              </button>
-            );
-          })}
+            </Link>
+          ))}
         </div>
-      </div>
 
-      {/* Footer */}
-      <footer className="text-center text-xs text-muted-foreground pt-4 border-t">
-        © {new Date().getFullYear()} Board Saathi · Built with ❤️ using{' '}
-        <a
-          href={`https://caffeine.ai/?utm_source=Caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname || 'board-saathi')}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-primary hover:underline"
-        >
-          caffeine.ai
-        </a>
-      </footer>
+        {/* Footer */}
+        <footer className="text-center text-xs text-muted-foreground pt-4 border-t">
+          © {new Date().getFullYear()} Board Saathi · Built with ❤️ using{' '}
+          <a
+            href={`https://caffeine.ai/?utm_source=Caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname || 'board-saathi')}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary hover:underline"
+          >
+            caffeine.ai
+          </a>
+        </footer>
+      </div>
     </div>
   );
 }

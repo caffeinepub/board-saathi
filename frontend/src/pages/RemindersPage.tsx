@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Bell, Plus, Trash2, Loader2, Volume2, VolumeX } from 'lucide-react';
+import { Bell, Plus, Trash2, Loader2, Volume2, VolumeX, AlarmClock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -181,6 +181,11 @@ export default function RemindersPage() {
                               {getSoundLabel(reminder.alarmSound)}
                             </p>
                           )}
+                          {/* Alert schedule info badge */}
+                          <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                            <AlarmClock className="w-3 h-3" />
+                            Alert: 5 min before + alarm at due time
+                          </p>
                         </div>
                       </div>
                       <Button
@@ -296,8 +301,9 @@ export default function RemindersPage() {
                   {previewPlaying ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground">
-                You'll get a notification 5 min before & the alarm plays at the set time.
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <AlarmClock className="w-3 h-3" />
+                Notification 5 min before + alarm sound plays at due time.
               </p>
             </div>
           </div>

@@ -51,7 +51,7 @@ export function useReminderScheduler(reminders: LocalReminder[]) {
 
       // Pre-notification key
       const preKey = `pre_${reminder.id}`;
-      // Alarm key
+      // Alarm key (exact time)
       const alarmKey = `alarm_${reminder.id}`;
 
       // Schedule pre-notification (5 min before)
@@ -68,16 +68,16 @@ export function useReminderScheduler(reminders: LocalReminder[]) {
         scheduledIds.add(preKey);
       }
 
-      // Schedule alarm at exact reminder time
+      // Schedule alarm at exact reminder time — plays sound AND shows notification
       if (!scheduledIds.has(alarmKey) && reminderTime > now) {
         const delay = reminderTime - now;
         const tid = setTimeout(() => {
-          // Play alarm sound
+          // Play alarm sound on device
           playAlarm(soundId);
-          // Also show a notification at alarm time
+          // Show "due now" notification
           showNotification(
-            '🔔 Reminder!',
-            reminder.text
+            '🔔 Reminder Due Now!',
+            `Your reminder is due now: ${reminder.text}`
           );
           scheduledIds.delete(alarmKey);
         }, delay);
