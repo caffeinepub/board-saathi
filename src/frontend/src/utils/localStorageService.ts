@@ -86,16 +86,19 @@ export function isUsernameAvailable(username: string): boolean {
 }
 
 // Session management
+// NOTE: We use localStorage (not sessionStorage) so the session persists
+// across tab closes, PWA restarts, and device reboots.
+// The session is only cleared when the user explicitly logs out.
 export function getCurrentUserId(): string | null {
-  return sessionStorage.getItem("bs_currentUserId");
+  return localStorage.getItem("bs_currentUserId");
 }
 
 export function setCurrentUserId(userId: string): void {
-  sessionStorage.setItem("bs_currentUserId", userId);
+  localStorage.setItem("bs_currentUserId", userId);
 }
 
 export function clearCurrentSession(): void {
-  sessionStorage.removeItem("bs_currentUserId");
+  localStorage.removeItem("bs_currentUserId");
 }
 
 export function isGuest(): boolean {
@@ -629,7 +632,7 @@ export function parentLogin(
 
 export function getParentSession(): ParentSession | null {
   try {
-    const raw = sessionStorage.getItem("bs_parentSession");
+    const raw = localStorage.getItem("bs_parentSession");
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
@@ -637,11 +640,11 @@ export function getParentSession(): ParentSession | null {
 }
 
 export function setParentSession(session: ParentSession): void {
-  sessionStorage.setItem("bs_parentSession", JSON.stringify(session));
+  localStorage.setItem("bs_parentSession", JSON.stringify(session));
 }
 
 export function clearParentSession(): void {
-  sessionStorage.removeItem("bs_parentSession");
+  localStorage.removeItem("bs_parentSession");
 }
 
 export interface LinkedChildData {
