@@ -38,7 +38,10 @@ import {
 } from "./utils/localStorageService";
 
 import AboutPage from "./pages/AboutPage";
+import AnswerEvaluatorPage from "./pages/AnswerEvaluatorPage";
+import ExamPaperPage from "./pages/ExamPaperPage";
 import FlashcardsPage from "./pages/FlashcardsPage";
+import MindMapPage from "./pages/MindMapPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -232,6 +235,24 @@ const timerRoute = createRoute({
   component: TimerPage,
 });
 
+const examPaperRoute = createRoute({
+  getParentRoute: () => studentLayoutRoute,
+  path: "/exam-paper",
+  component: ExamPaperPage,
+});
+
+const mindMapRoute = createRoute({
+  getParentRoute: () => studentLayoutRoute,
+  path: "/mind-map",
+  component: MindMapPage,
+});
+
+const answerEvaluatorRoute = createRoute({
+  getParentRoute: () => studentLayoutRoute,
+  path: "/answer-evaluator",
+  component: AnswerEvaluatorPage,
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   parentDashboardRoute,
@@ -255,6 +276,9 @@ const routeTree = rootRoute.addChildren([
     aboutRoute,
     messagesRoute,
     timerRoute,
+    examPaperRoute,
+    mindMapRoute,
+    answerEvaluatorRoute,
   ]),
 ]);
 

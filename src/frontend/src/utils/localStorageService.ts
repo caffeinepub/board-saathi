@@ -941,3 +941,97 @@ export function deleteTimer(userId: string, timerId: string): void {
   const updated = timers.filter((t) => t.id !== timerId);
   localStorage.setItem(getTimersKey(userId), JSON.stringify(updated));
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EXAM PAPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface LocalExamPaperQuestion {
+  questionId: number;
+  questionText: string;
+  answer: string;
+  chapterId: number;
+  subjectId: number;
+  marks: number;
+}
+
+export interface LocalExamPaper {
+  id: string;
+  title: string;
+  subjectIds: number[];
+  chapterIds: number[];
+  questions: LocalExamPaperQuestion[];
+  marksPerQuestion: number;
+  totalMarks: number;
+  timeLimit: number; // in minutes
+  createdAt: number;
+}
+
+export function getExamPapers(userId: string): LocalExamPaper[] {
+  return getData<LocalExamPaper[]>(userId, "examPapers", []);
+}
+
+export function saveExamPapers(userId: string, papers: LocalExamPaper[]): void {
+  setData(userId, "examPapers", papers);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MIND MAPS
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface MindMapNode {
+  id: string;
+  text: string;
+  x: number;
+  y: number;
+  color: string;
+  parentId: string | null;
+}
+
+export interface LocalMindMap {
+  id: string;
+  title: string;
+  chapterId: number | null;
+  subjectId: number | null;
+  nodes: MindMapNode[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export function getMindMaps(userId: string): LocalMindMap[] {
+  return getData<LocalMindMap[]>(userId, "mindMaps", []);
+}
+
+export function saveMindMaps(userId: string, maps: LocalMindMap[]): void {
+  setData(userId, "mindMaps", maps);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ANSWER EVALUATIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface LocalAnswerEvaluation {
+  id: string;
+  questionId: number;
+  questionText: string;
+  modelAnswer: string;
+  imageData: string; // base64
+  introScore: number; // 0-2
+  keyPointsScore: number; // 0-4
+  examplesScore: number; // 0-2
+  conclusionScore: number; // 0-2
+  totalScore: number; // 0-10
+  feedback: string;
+  evaluatedAt: number;
+}
+
+export function getAnswerEvaluations(userId: string): LocalAnswerEvaluation[] {
+  return getData<LocalAnswerEvaluation[]>(userId, "answerEvaluations", []);
+}
+
+export function saveAnswerEvaluations(
+  userId: string,
+  evals: LocalAnswerEvaluation[],
+): void {
+  setData(userId, "answerEvaluations", evals);
+}
