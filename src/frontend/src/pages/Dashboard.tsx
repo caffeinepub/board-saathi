@@ -9,11 +9,7 @@ import {
   useGetStudyStreak,
   useGetTargets,
 } from "@/hooks/useQueries";
-import {
-  getCurrentUserId,
-  getUserAccountById,
-  isGuest,
-} from "@/utils/localStorageService";
+import { getCurrentUserAccount, isGuest } from "@/utils/localStorageService";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   Bell,
@@ -77,11 +73,9 @@ function DaysLeftBanner() {
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const userId = getCurrentUserId();
   const guest = isGuest();
-  const account =
-    userId && userId !== "guest" ? getUserAccountById(userId) : null;
-  const userName = account?.name ?? (guest ? "Guest" : "Student");
+  const account = guest ? null : getCurrentUserAccount();
+  const userName = account?.name ?? (guest ? "Guest" : "");
   const currentUsername = account?.username ?? null;
 
   const { data: targets = [] } = useGetTargets();
@@ -147,7 +141,7 @@ export default function Dashboard() {
           <div>
             <p className="text-xs text-muted-foreground">Welcome back,</p>
             <h1 className="text-lg font-black text-foreground leading-tight">
-              {userName} 👋
+              {userName || account?.username || "Board Saathi"} 👋
             </h1>
           </div>
           <div className="flex items-center gap-1">

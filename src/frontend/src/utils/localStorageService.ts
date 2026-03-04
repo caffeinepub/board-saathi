@@ -50,7 +50,34 @@ export function getUserAccount(username: string): StoredUserAccount | null {
 
 export function getUserAccountById(userId: string): StoredUserAccount | null {
   const accounts = getAllAccounts();
-  return Object.values(accounts).find((a) => a.userId === userId) || null;
+  // First: exact match on stored userId field
+  const byId = Object.values(accounts).find((a) => a.userId === userId);
+  if (byId) return byId;
+
+  // Fallback: if userId looks like "user_<username>", look up by username directly.
+  // This handles cases where old accounts were saved with a random userId but the
+  // session was later set to the stable "user_<username>" format.
+  if (userId.startsWith("user_")) {
+    const usernameFromId = userId.slice(5); // strip "user_" prefix
+    const byUsername = accounts[usernameFromId];
+    if (byUsername) {
+      // Repair: update the stored account's userId to match the stable format
+      byUsername.userId = userId;
+      saveUserAccount(byUsername);
+      return byUsername;
+    }
+  }
+  return null;
+}
+
+/**
+ * Convenience: get the currently-logged-in student account (not guest, not parent).
+ * Returns null if not authenticated or if the account can't be found.
+ */
+export function getCurrentUserAccount(): StoredUserAccount | null {
+  const userId = getCurrentUserId();
+  if (!userId || userId === "guest") return null;
+  return getUserAccountById(userId);
 }
 
 export function validateCredentials(

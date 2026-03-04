@@ -20,8 +20,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import {
   clearCurrentSession,
-  getCurrentUserId,
-  getUserAccountById,
+  getCurrentUserAccount,
   isGuest,
   saveUserAccount,
   updateUserPassword,
@@ -31,9 +30,7 @@ export default function ProfilePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const guest = isGuest();
-  const userId = getCurrentUserId();
-  const account =
-    userId && userId !== "guest" ? getUserAccountById(userId) : null;
+  const account = guest ? null : getCurrentUserAccount();
 
   const [name, setName] = useState(account?.name ?? "");
   const [school, setSchool] = useState(account?.school ?? "");

@@ -11,6 +11,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Edit2,
+  Eye,
   GitBranch,
   LogOut,
   Palette,
@@ -76,7 +78,7 @@ function getFgColor(bg: string): string {
 const NODE_W = 140;
 const NODE_H = 44;
 
-type View = "list" | "editor" | "create";
+type View = "list" | "editor" | "viewer" | "create";
 
 function makeRootNode(title: string): MindMapNode {
   return {
@@ -620,6 +622,224 @@ function FullscreenEditor({ map, onSaveAndExit }: FullscreenEditorProps) {
   );
 }
 
+// ─── Read-only Fullscreen Viewer ──────────────────────────────────────────────
+interface FullscreenViewerProps {
+  map: LocalMindMap;
+  onEdit: () => void;
+  onExit: () => void;
+}
+
+function FullscreenViewer({ map, onEdit, onExit }: FullscreenViewerProps) {
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const scale = 1;
+  const svgRef = useRef<SVGSVGElement>(null);
+  const panStateRef = useRef<{
+    startMouseX: number;
+    startMouseY: number;
+    startOffsetX: number;
+    startOffsetY: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      const ps = panStateRef.current;
+      if (!ps) return;
+      setOffset({
+        x: ps.startOffsetX + (e.clientX - ps.startMouseX),
+        y: ps.startOffsetY + (e.clientY - ps.startMouseY),
+      });
+    };
+    const onMouseUp = () => {
+      panStateRef.current = null;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      const ps = panStateRef.current;
+      if (!ps) return;
+      e.preventDefault();
+      const t = e.touches[0];
+      setOffset({
+        x: ps.startOffsetX + (t.clientX - ps.startMouseX),
+        y: ps.startOffsetY + (t.clientY - ps.startMouseY),
+      });
+    };
+    const onTouchEnd = () => {
+      panStateRef.current = null;
+    };
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("touchmove", onTouchMove, { passive: false });
+    window.addEventListener("touchend", onTouchEnd);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", onTouchEnd);
+    };
+  }, []);
+
+  const handlePanStart = (
+    e: React.MouseEvent<SVGSVGElement> | React.TouchEvent<SVGSVGElement>,
+  ) => {
+    let clientX: number;
+    let clientY: number;
+    if ("touches" in e) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+    panStateRef.current = {
+      startMouseX: clientX,
+      startMouseY: clientY,
+      startOffsetX: offset.x,
+      startOffsetY: offset.y,
+    };
+  };
+
+  const nodes = map.nodes;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-gray-950 flex"
+      style={{ touchAction: "none" } as CSSProperties}
+      data-ocid="mindmap.fullscreen.viewer"
+    >
+      {/* Canvas */}
+      <svg
+        ref={svgRef}
+        className="flex-1 w-full h-full"
+        onMouseDown={handlePanStart}
+        onTouchStart={handlePanStart}
+        style={{ cursor: "grab", userSelect: "none", display: "block" }}
+        role="img"
+        aria-label="Mind map viewer — drag to pan"
+        data-ocid="mindmap.viewer.canvas_target"
+      >
+        <defs>
+          <pattern
+            id="grid-viewer"
+            width={40 * scale}
+            height={40 * scale}
+            patternUnits="userSpaceOnUse"
+            x={offset.x % (40 * scale)}
+            y={offset.y % (40 * scale)}
+          >
+            <circle cx={1} cy={1} r={1} fill="rgba(255,255,255,0.08)" />
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#grid-viewer)" />
+
+        <g transform={`translate(${offset.x},${offset.y}) scale(${scale})`}>
+          {/* Connections */}
+          {nodes
+            .filter((n) => n.parentId !== null)
+            .map((n) => {
+              const parent = nodes.find((p) => p.id === n.parentId);
+              if (!parent) return null;
+              const x1 = parent.x + NODE_W / 2;
+              const y1 = parent.y + NODE_H / 2;
+              const x2 = n.x + NODE_W / 2;
+              const y2 = n.y + NODE_H / 2;
+              const mx = (x1 + x2) / 2;
+              const d = `M${x1},${y1} Q${mx},${y1} ${x2},${y2}`;
+              return (
+                <path
+                  key={`edge-${n.id}`}
+                  d={d}
+                  stroke={n.color}
+                  strokeWidth={2.5}
+                  fill="none"
+                  opacity={0.8}
+                />
+              );
+            })}
+
+          {/* Nodes (read-only, no drag) */}
+          {nodes.map((n) => {
+            const fg = getFgColor(n.color);
+            return (
+              <g key={n.id} transform={`translate(${n.x},${n.y})`}>
+                <rect
+                  width={NODE_W}
+                  height={NODE_H}
+                  rx={12}
+                  fill={n.color}
+                  stroke="rgba(255,255,255,0.15)"
+                  strokeWidth={1.5}
+                  filter="drop-shadow(0 3px 6px rgba(0,0,0,0.4))"
+                />
+                <text
+                  x={NODE_W / 2}
+                  y={NODE_H / 2}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fill={fg}
+                  fontSize={12}
+                  fontWeight={n.parentId === null ? "bold" : "normal"}
+                  fontFamily="sans-serif"
+                  style={{ pointerEvents: "none" }}
+                >
+                  {n.text.length > 17 ? `${n.text.slice(0, 15)}…` : n.text}
+                </text>
+              </g>
+            );
+          })}
+        </g>
+      </svg>
+
+      {/* Right sidebar — Edit + Exit */}
+      <div className="flex flex-col items-center justify-center gap-3 w-16 bg-gray-900 border-l border-white/10 py-6 relative z-10">
+        {/* Map title */}
+        <div className="absolute top-3 left-0 right-0 flex justify-center">
+          <span className="text-[10px] text-white/50 font-semibold text-center px-1 leading-tight">
+            {map.title.length > 8 ? `${map.title.slice(0, 7)}…` : map.title}
+          </span>
+        </div>
+
+        {/* View-only badge */}
+        <div className="absolute top-10 left-0 right-0 flex justify-center">
+          <span className="text-[8px] text-white/30 font-medium">
+            View only
+          </span>
+        </div>
+
+        {/* Edit button */}
+        <button
+          type="button"
+          onClick={onEdit}
+          className="flex flex-col items-center gap-1 p-2 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white transition-colors w-12"
+          title="Switch to Edit mode"
+          data-ocid="mindmap.viewer.edit.button"
+        >
+          <Edit2 className="w-5 h-5" />
+          <span className="text-[9px] font-bold leading-none">Edit</span>
+        </button>
+
+        {/* Divider */}
+        <div className="w-8 h-px bg-white/10 my-1" />
+
+        {/* Exit button */}
+        <button
+          type="button"
+          onClick={onExit}
+          className="flex flex-col items-center gap-1 p-2 rounded-xl bg-gray-700 hover:bg-gray-600 active:bg-gray-800 text-white transition-colors w-12"
+          title="Exit viewer"
+          data-ocid="mindmap.viewer.exit.button"
+        >
+          <LogOut className="w-5 h-5" />
+          <span className="text-[9px] font-bold leading-none">Exit</span>
+        </button>
+
+        {/* Bottom instructions */}
+        <div className="absolute bottom-3 left-0 right-0 px-1 text-center">
+          <p className="text-[8px] text-white/30 leading-tight">Drag to pan</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main MindMapPage ─────────────────────────────────────────────────────────
 export default function MindMapPage() {
   const userId = getCurrentUserId() ?? "guest";
@@ -639,6 +859,12 @@ export default function MindMapPage() {
   const openEditor = (map: LocalMindMap) => {
     setEditingMap(map);
     setView("editor");
+  };
+
+  // ── Open viewer ─────────────────────────────────────────────────────────
+  const openViewer = (map: LocalMindMap) => {
+    setEditingMap(map);
+    setView("viewer");
   };
 
   // ── Save (from fullscreen editor) ───────────────────────────────────────
@@ -697,6 +923,20 @@ export default function MindMapPage() {
   if (view === "editor" && editingMap) {
     return (
       <FullscreenEditor map={editingMap} onSaveAndExit={handleSaveAndExit} />
+    );
+  }
+
+  // ─── Fullscreen viewer overlay ────────────────────────────────────────────
+  if (view === "viewer" && editingMap) {
+    return (
+      <FullscreenViewer
+        map={editingMap}
+        onEdit={() => setView("editor")}
+        onExit={() => {
+          setView("list");
+          setEditingMap(null);
+        }}
+      />
     );
   }
 
@@ -819,19 +1059,31 @@ export default function MindMapPage() {
                             {new Date(m.updatedAt).toLocaleDateString()}
                           </p>
                         </button>
-                        <div className="flex gap-1">
+                        <div className="flex gap-1 items-center">
                           <Button
                             variant="outline"
                             size="sm"
+                            className="gap-1 text-xs px-2 h-8"
                             onClick={() => openEditor(m)}
                             data-ocid={`mindmap.map.edit_button.${i + 1}`}
                           >
-                            Open
+                            <Edit2 className="w-3 h-3" />
+                            Edit
+                          </Button>
+                          <Button
+                            variant="default"
+                            size="sm"
+                            className="gap-1 text-xs px-2 h-8"
+                            onClick={() => openViewer(m)}
+                            data-ocid={`mindmap.map.view_button.${i + 1}`}
+                          >
+                            <Eye className="w-3 h-3" />
+                            View
                           </Button>
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="text-destructive hover:bg-destructive/10"
+                            className="text-destructive hover:bg-destructive/10 w-8 h-8"
                             onClick={() => handleDeleteMap(m.id)}
                             data-ocid={`mindmap.map.delete_button.${i + 1}`}
                           >
