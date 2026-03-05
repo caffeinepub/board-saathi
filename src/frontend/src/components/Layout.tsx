@@ -4,6 +4,7 @@ import { Link, Outlet, useNavigate } from "@tanstack/react-router";
 import {
   Bell,
   BookOpen,
+  Brain,
   Calendar,
   CheckSquare,
   ClipboardList,
@@ -16,6 +17,7 @@ import {
   LogOut,
   Menu,
   MessageSquare,
+  PenLine,
   RotateCcw,
   Target,
   TrendingUp,
@@ -26,6 +28,7 @@ import {
 } from "lucide-react";
 import React, { useState, useEffect } from "react";
 import { toast } from "sonner";
+import { useActor } from "../hooks/useActor";
 import { useGetChildMessages } from "../hooks/useQueries";
 import {
   clearCurrentSession,
@@ -33,7 +36,13 @@ import {
   getUserAccountById,
   isGuest,
 } from "../utils/localStorageService";
+import {
+  flushQueue,
+  initDataChangeListener,
+  setGlobalActor,
+} from "../utils/syncService";
 import BottomNavBar from "./BottomNavBar";
+import SyncStatus from "./SyncStatus";
 
 const NAV_LINKS = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard", exact: true },
@@ -61,6 +70,18 @@ const NAV_LINKS = [
     label: "Answer Eval",
     exact: false,
   },
+  {
+    to: "/handwriting-analyzer",
+    icon: PenLine,
+    label: "Handwriting",
+    exact: false,
+  },
+  {
+    to: "/spaced-repetition",
+    icon: Brain,
+    label: "Spaced Rep",
+    exact: false,
+  },
   { to: "/profile", icon: User, label: "Profile", exact: false },
   { to: "/about", icon: Info, label: "About", exact: false },
 ];
@@ -68,15 +89,36 @@ const NAV_LINKS = [
 export default function Layout() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { actor } = useActor();
   const guest = isGuest();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
-  // Track online/offline status
+  // Initialise the data-change listener once (registers the window event handler)
+  useEffect(() => {
+    initDataChangeListener();
+  }, []);
+
+  // Keep syncService's global actor reference up to date
+  useEffect(() => {
+    setGlobalActor(actor);
+  }, [actor]);
+
+  // Track online/offline status and flush pending sync queue on reconnect
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
       toast.success("Back online!", { duration: 3000 });
+      // Auto-flush pending data to canister when connection returns
+      if (actor) {
+        const userId = getCurrentUserId();
+        if (userId && userId !== "guest") {
+          const username = userId.startsWith("user_")
+            ? userId.slice(5)
+            : userId;
+          flushQueue(username, actor).catch(() => {});
+        }
+      }
     };
     const handleOffline = () => {
       setIsOnline(false);
@@ -89,7 +131,7 @@ export default function Layout() {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
-  }, []);
+  }, [actor]);
 
   const getCurrentUsername = (): string | null => {
     const userId = getCurrentUserId();
@@ -195,6 +237,8 @@ export default function Layout() {
               </div>
             </div>
           )}
+          {/* Sync status indicator */}
+          {!guest && <SyncStatus />}
           {guest ? (
             <Button
               variant="default"
@@ -326,6 +370,7 @@ export default function Layout() {
             <Menu className="w-5 h-5" />
           </Button>
           <div className="flex items-center gap-1.5">
+            {!guest && <SyncStatus />}
             <img
               src="/assets/generated/favicon.dim_32x32.png"
               alt=""

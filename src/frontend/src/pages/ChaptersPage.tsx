@@ -16,6 +16,7 @@ import { useNavigate, useParams } from "@tanstack/react-router";
 import {
   ArrowLeft,
   BookOpen,
+  Brain,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -35,6 +36,12 @@ import {
   useGetSubjects,
   useMarkChapterCompleted,
 } from "../hooks/useQueries";
+import {
+  type LocalSRSCard,
+  getCurrentUserId,
+  getSRSCards,
+  saveSRSCards,
+} from "../utils/localStorageService";
 
 interface ChapterCardProps {
   chapter: {
@@ -45,15 +52,49 @@ interface ChapterCardProps {
     completed: boolean;
   };
   subjectId: number;
+  subjectName: string;
   onToggleComplete: () => void;
 }
 
 function ChapterCard({
   chapter,
   subjectId,
+  subjectName,
   onToggleComplete,
 }: ChapterCardProps) {
+  const userId = getCurrentUserId() ?? "guest";
   const [expanded, setExpanded] = useState(false);
+  const [inSRS, setInSRS] = useState(() => {
+    const cards = getSRSCards(userId);
+    return cards.some(
+      (c) => c.chapterId === chapter.id && c.subjectId === subjectId,
+    );
+  });
+
+  const handleAddToSRS = () => {
+    const cards = getSRSCards(userId);
+    if (
+      cards.some((c) => c.chapterId === chapter.id && c.subjectId === subjectId)
+    ) {
+      toast.info("Already in Spaced Repetition");
+      return;
+    }
+    const newCard: LocalSRSCard = {
+      chapterId: chapter.id,
+      subjectId,
+      chapterName: chapter.name,
+      subjectName,
+      interval: 1,
+      easeFactor: 2.5,
+      repetitions: 0,
+      nextReview: Date.now(),
+      lastReview: 0,
+      addedAt: Date.now(),
+    };
+    saveSRSCards(userId, [...cards, newCard]);
+    setInSRS(true);
+    toast.success(`"${chapter.name}" added to SRS 🧠`);
+  };
 
   return (
     <Card
@@ -84,6 +125,23 @@ function ChapterCard({
                   <Badge variant="outline" className="text-xs">
                     {chapter.weightage}%
                   </Badge>
+                )}
+                {inSRS ? (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-200">
+                    <Brain className="w-2.5 h-2.5" />
+                    In SRS
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleAddToSRS}
+                    className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors"
+                    title="Add to Spaced Repetition"
+                    data-ocid="chapter.srs.button"
+                  >
+                    <Brain className="w-2.5 h-2.5" />
+                    SRS
+                  </button>
                 )}
                 <button
                   type="button"
@@ -243,6 +301,7 @@ export default function ChaptersPage() {
               key={chapter.id}
               chapter={chapter}
               subjectId={subjectIdNum}
+              subjectName={subject?.name ?? "Unknown Subject"}
               onToggleComplete={() =>
                 handleToggleComplete(chapter.id, chapter.completed)
               }

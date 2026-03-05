@@ -173,7 +173,20 @@ function setData<T>(userId: string, dataType: string, data: T): void {
   try {
     const storage = getStorage(userId);
     const key = getUserDataKey(userId, dataType);
-    storage.setItem(key, JSON.stringify(data));
+    const serialized = JSON.stringify(data);
+    storage.setItem(key, serialized);
+    // Notify syncService (via CustomEvent to avoid circular imports)
+    if (userId !== "guest" && typeof window !== "undefined") {
+      try {
+        window.dispatchEvent(
+          new CustomEvent("bs:data-changed", {
+            detail: { userId, dataType, data: serialized },
+          }),
+        );
+      } catch {
+        // Never fail the write because of a sync notification issue
+      }
+    }
   } catch (e) {
     console.error(`Failed to save ${dataType}:`, e);
   }
@@ -1034,6 +1047,61 @@ export function getMindMaps(userId: string): LocalMindMap[] {
 
 export function saveMindMaps(userId: string, maps: LocalMindMap[]): void {
   setData(userId, "mindMaps", maps);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HANDWRITING ANALYSIS
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface LocalHandwritingAnalysis {
+  id: string;
+  imageData: string; // base64 thumbnail (max 400px wide)
+  neatnessScore: number; // 0-25
+  consistencyScore: number; // 0-25
+  spacingScore: number; // 0-25
+  alignmentScore: number; // 0-25
+  totalScore: number; // 0-100
+  grade: "Excellent" | "Good" | "Average" | "Needs Practice";
+  tips: string[];
+  analyzedAt: number;
+}
+
+export function getHandwritingAnalyses(
+  userId: string,
+): LocalHandwritingAnalysis[] {
+  return getData<LocalHandwritingAnalysis[]>(userId, "handwritingAnalyses", []);
+}
+
+export function saveHandwritingAnalyses(
+  userId: string,
+  analyses: LocalHandwritingAnalysis[],
+): void {
+  setData(userId, "handwritingAnalyses", analyses);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SPACED REPETITION (SM-2)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface LocalSRSCard {
+  chapterId: number;
+  subjectId: number;
+  chapterName: string;
+  subjectName: string;
+  interval: number; // days until next review
+  easeFactor: number; // SM-2 ease factor (starts at 2.5)
+  repetitions: number; // total reviews done
+  nextReview: number; // timestamp (ms)
+  lastReview: number; // timestamp (ms)
+  addedAt: number;
+}
+
+export function getSRSCards(userId: string): LocalSRSCard[] {
+  return getData<LocalSRSCard[]>(userId, "srsCards", []);
+}
+
+export function saveSRSCards(userId: string, cards: LocalSRSCard[]): void {
+  setData(userId, "srsCards", cards);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

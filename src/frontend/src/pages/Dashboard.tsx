@@ -9,11 +9,17 @@ import {
   useGetStudyStreak,
   useGetTargets,
 } from "@/hooks/useQueries";
-import { getCurrentUserAccount, isGuest } from "@/utils/localStorageService";
+import {
+  getCurrentUserAccount,
+  getCurrentUserId,
+  getSRSCards,
+  isGuest,
+} from "@/utils/localStorageService";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   Bell,
   BookOpen,
+  Brain,
   Calendar,
   CalendarClock,
   CheckCircle2,
@@ -102,6 +108,14 @@ export default function Dashboard() {
       .slice(0, 3);
   }, [targets]);
 
+  // SRS due today count
+  const srsDueCount = useMemo(() => {
+    const userId = getCurrentUserId();
+    if (!userId || userId === "guest") return 0;
+    const cards = getSRSCards(userId);
+    return cards.filter((c) => c.nextReview <= Date.now()).length;
+  }, []);
+
   const currentStreak = streak ? Number(streak.currentStreak) : 0;
   const totalChapters =
     progress?.subjectProgress.reduce(
@@ -175,6 +189,36 @@ export default function Dashboard() {
       <div className="px-4 py-4 space-y-4">
         {/* Days Left Banner */}
         <DaysLeftBanner />
+
+        {/* SRS Due Today widget */}
+        {srsDueCount > 0 && (
+          <div
+            className="flex items-center gap-3 rounded-xl bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 px-4 py-3"
+            data-ocid="dashboard.srs.card"
+          >
+            <div className="w-9 h-9 rounded-full bg-orange-100 dark:bg-orange-900/50 flex items-center justify-center flex-shrink-0">
+              <Brain className="w-4 h-4 text-orange-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-orange-800 dark:text-orange-200 leading-tight">
+                {srsDueCount} chapter{srsDueCount !== 1 ? "s" : ""} due for
+                review
+              </p>
+              <p className="text-xs text-orange-600 dark:text-orange-400">
+                Spaced repetition reminder
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-orange-300 text-orange-700 hover:bg-orange-100 text-xs flex-shrink-0"
+              onClick={() => navigate({ to: "/spaced-repetition" })}
+              data-ocid="dashboard.srs.primary_button"
+            >
+              Review Now
+            </Button>
+          </div>
+        )}
 
         {/* Target Motivation Widget */}
         <TargetMotivationWidget targets={targets} />

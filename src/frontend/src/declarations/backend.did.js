@@ -104,12 +104,18 @@ export const idlService = IDL.Service({
       ['query'],
     ),
   'getTypingStatus' : IDL.Func([IDL.Principal], [IDL.Bool], ['query']),
+  'getUserData' : IDL.Func(
+      [IDL.Text, IDL.Text],
+      [IDL.Opt(IDL.Text)],
+      ['query'],
+    ),
   'getUserProfile' : IDL.Func(
       [IDL.Principal],
       [IDL.Opt(UserProfile)],
       ['query'],
     ),
   'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
+  'listUserDataTypes' : IDL.Func([IDL.Text], [IDL.Vec(IDL.Text)], ['query']),
   'markMessagesRead' : IDL.Func([IDL.Principal], [], []),
   'registerParent' : IDL.Func([IDL.Text, IDL.Text, IDL.Text, IDL.Text], [], []),
   'registerStudent' : IDL.Func(
@@ -118,6 +124,7 @@ export const idlService = IDL.Service({
       [],
     ),
   'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
+  'saveUserData' : IDL.Func([IDL.Text, IDL.Text, IDL.Text], [], []),
   'sendMessage' : IDL.Func([IDL.Principal, IDL.Text, IDL.Text], [], []),
   'setTyping' : IDL.Func([IDL.Bool], [], []),
   'updateFeedback' : IDL.Func([IDL.Nat, IDL.Text, FeedbackType], [], []),
@@ -220,12 +227,18 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'getTypingStatus' : IDL.Func([IDL.Principal], [IDL.Bool], ['query']),
+    'getUserData' : IDL.Func(
+        [IDL.Text, IDL.Text],
+        [IDL.Opt(IDL.Text)],
+        ['query'],
+      ),
     'getUserProfile' : IDL.Func(
         [IDL.Principal],
         [IDL.Opt(UserProfile)],
         ['query'],
       ),
     'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
+    'listUserDataTypes' : IDL.Func([IDL.Text], [IDL.Vec(IDL.Text)], ['query']),
     'markMessagesRead' : IDL.Func([IDL.Principal], [], []),
     'registerParent' : IDL.Func(
         [IDL.Text, IDL.Text, IDL.Text, IDL.Text],
@@ -238,6 +251,7 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
+    'saveUserData' : IDL.Func([IDL.Text, IDL.Text, IDL.Text], [], []),
     'sendMessage' : IDL.Func([IDL.Principal, IDL.Text, IDL.Text], [], []),
     'setTyping' : IDL.Func([IDL.Bool], [], []),
     'updateFeedback' : IDL.Func([IDL.Nat, IDL.Text, FeedbackType], [], []),

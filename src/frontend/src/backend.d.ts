@@ -75,12 +75,24 @@ export interface backendInterface {
     getPresence(user: Principal): Promise<PresenceInfo>;
     getStudentByUsername(username: string): Promise<StudentProfile | null>;
     getTypingStatus(user: Principal): Promise<boolean>;
+    /**
+     * / Get user data by username + dataType
+     */
+    getUserData(username: string, dataType: string): Promise<string | null>;
     getUserProfile(user: Principal): Promise<UserProfile | null>;
     isCallerAdmin(): Promise<boolean>;
+    /**
+     * / List all data types stored for a given username
+     */
+    listUserDataTypes(username: string): Promise<Array<string>>;
     markMessagesRead(sender: Principal): Promise<void>;
     registerParent(username: string, name: string, linkedStudentUsername: string, password: string): Promise<void>;
     registerStudent(username: string, name: string, school: string, studentClass: bigint, password: string): Promise<void>;
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
+    /**
+     * / Save user data (username + dataType) JSON blob
+     */
+    saveUserData(username: string, dataType: string, jsonBlob: string): Promise<void>;
     sendMessage(recipient: Principal, senderRole: string, content: string): Promise<void>;
     setTyping(isTyping: boolean): Promise<void>;
     updateFeedback(feedbackId: bigint, updatedMessage: string, feedbackType: FeedbackType): Promise<void>;

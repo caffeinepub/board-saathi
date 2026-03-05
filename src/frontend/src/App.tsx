@@ -41,7 +41,9 @@ import AboutPage from "./pages/AboutPage";
 import AnswerEvaluatorPage from "./pages/AnswerEvaluatorPage";
 import ExamPaperPage from "./pages/ExamPaperPage";
 import FlashcardsPage from "./pages/FlashcardsPage";
+import HandwritingAnalyzerPage from "./pages/HandwritingAnalyzerPage";
 import MindMapPage from "./pages/MindMapPage";
+import SpacedRepetitionPage from "./pages/SpacedRepetitionPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -253,6 +255,18 @@ const answerEvaluatorRoute = createRoute({
   component: AnswerEvaluatorPage,
 });
 
+const handwritingRoute = createRoute({
+  getParentRoute: () => studentLayoutRoute,
+  path: "/handwriting-analyzer",
+  component: HandwritingAnalyzerPage,
+});
+
+const spacedRepRoute = createRoute({
+  getParentRoute: () => studentLayoutRoute,
+  path: "/spaced-repetition",
+  component: SpacedRepetitionPage,
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   parentDashboardRoute,
@@ -279,6 +293,8 @@ const routeTree = rootRoute.addChildren([
     examPaperRoute,
     mindMapRoute,
     answerEvaluatorRoute,
+    handwritingRoute,
+    spacedRepRoute,
   ]),
 ]);
 

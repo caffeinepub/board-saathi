@@ -70,8 +70,16 @@ export interface _SERVICE {
   'getPresence' : ActorMethod<[Principal], PresenceInfo>,
   'getStudentByUsername' : ActorMethod<[string], [] | [StudentProfile]>,
   'getTypingStatus' : ActorMethod<[Principal], boolean>,
+  /**
+   * / Get user data by username + dataType
+   */
+  'getUserData' : ActorMethod<[string, string], [] | [string]>,
   'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,
   'isCallerAdmin' : ActorMethod<[], boolean>,
+  /**
+   * / List all data types stored for a given username
+   */
+  'listUserDataTypes' : ActorMethod<[string], Array<string>>,
   'markMessagesRead' : ActorMethod<[Principal], undefined>,
   'registerParent' : ActorMethod<[string, string, string, string], undefined>,
   'registerStudent' : ActorMethod<
@@ -79,6 +87,10 @@ export interface _SERVICE {
     undefined
   >,
   'saveCallerUserProfile' : ActorMethod<[UserProfile], undefined>,
+  /**
+   * / Save user data (username + dataType) JSON blob
+   */
+  'saveUserData' : ActorMethod<[string, string, string], undefined>,
   'sendMessage' : ActorMethod<[Principal, string, string], undefined>,
   'setTyping' : ActorMethod<[boolean], undefined>,
   'updateFeedback' : ActorMethod<[bigint, string, FeedbackType], undefined>,

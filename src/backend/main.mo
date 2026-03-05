@@ -7,10 +7,12 @@ import Nat "mo:core/Nat";
 import Int "mo:core/Int";
 import Iter "mo:core/Iter";
 import Runtime "mo:core/Runtime";
-import Principal "mo:core/Principal";
 import Authorization "authorization/access-control";
 import MixinAuthorization "authorization/MixinAuthorization";
+import Migration "migration";
 
+// Apply migration using with-clause
+(with migration = Migration.run)
 actor {
   let accessControlState = Authorization.initState();
   include MixinAuthorization(accessControlState);
@@ -86,10 +88,6 @@ actor {
     completed : Bool;
   };
 
-  public type MCQOption = {
-    text : Text;
-  };
-
   public type MCQQuestion = {
     id : Nat;
     questionText : Text;
@@ -102,11 +100,6 @@ actor {
     name : Text;
     subjectId : Nat;
     questions : [MCQQuestion];
-  };
-
-  public type MCQAnswer = {
-    questionId : Nat;
-    selectedOption : Nat;
   };
 
   public type QuestionResult = {
@@ -234,28 +227,28 @@ actor {
   };
 
   // Persistent state variables
-  var chatMessages = List.empty<ChatMessage>();
-  var userPresence = Map.empty<Principal, PresenceInfo>();
-  var typingStatus = Map.empty<Principal, TypingStatus>();
+  let chatMessages = List.empty<ChatMessage>();
+  let userPresence = Map.empty<Principal, PresenceInfo>();
+  let typingStatus = Map.empty<Principal, TypingStatus>();
 
-  var studentProfiles = Map.empty<Principal, StudentProfile>();
-  var parentProfiles = Map.empty<Text, ParentProfile>();
+  let studentProfiles = Map.empty<Principal, StudentProfile>();
+  let parentProfiles = Map.empty<Text, ParentProfile>();
 
-  var userProfiles = Map.empty<Principal, UserProfile>();
-  var userSubjects = Map.empty<Principal, [Subject]>();
-  var userChapters = Map.empty<Principal, [Chapter]>();
-  var userNotes = Map.empty<Principal, [Note]>();
-  var userQuestions = Map.empty<Principal, [Question]>();
-  var userPlannerTasks = Map.empty<Principal, [PlannerTask]>();
-  var userReminders = Map.empty<Principal, [Reminder]>();
-  var userTargets = Map.empty<Principal, [Target]>();
-  var userMockTests = Map.empty<Principal, [MockTest]>();
-  var userTestAttempts = Map.empty<Principal, [TestAttempt]>();
-  var userFlashcards = Map.empty<Principal, [Flashcard]>();
-  var userRevisionTasks = Map.empty<Principal, [RevisionTask]>();
-  var userStudyStreaks = Map.empty<Principal, StudyStreak>();
-  var userAchievements = Map.empty<Principal, [UserAchievement]>();
-  var userStudentFeedback = Map.empty<Principal, [StudentFeedback]>();
+  let userProfiles = Map.empty<Principal, UserProfile>();
+  let userSubjects = Map.empty<Principal, [Subject]>();
+  let userChapters = Map.empty<Principal, [Chapter]>();
+  let userNotes = Map.empty<Principal, [Note]>();
+  let userQuestions = Map.empty<Principal, [Question]>();
+  let userPlannerTasks = Map.empty<Principal, [PlannerTask]>();
+  let userReminders = Map.empty<Principal, [Reminder]>();
+  let userTargets = Map.empty<Principal, [Target]>();
+  let userMockTests = Map.empty<Principal, [MockTest]>();
+  let userTestAttempts = Map.empty<Principal, [TestAttempt]>();
+  let userFlashcards = Map.empty<Principal, [Flashcard]>();
+  let userRevisionTasks = Map.empty<Principal, [RevisionTask]>();
+  let userStudyStreaks = Map.empty<Principal, StudyStreak>();
+  let userAchievements = Map.empty<Principal, [UserAchievement]>();
+  let userStudentFeedback = Map.empty<Principal, [StudentFeedback]>();
 
   var subjectIdCounter : Nat = 0;
   var chapterIdCounter : Nat = 0;
@@ -271,6 +264,9 @@ actor {
   var achievementIdCounter : Nat = 0;
   var studentFeedbackIdCounter : Nat = 0;
   var messageIdCounter : Nat = 0;
+
+  // New persistent user data store (username -> dataType -> jsonBlob)
+  let userDataStore = Map.empty<Text, Map.Map<Text, Text>>();
 
   func oneDayNs() : Int { 86_400_000_000_000 };
 
@@ -423,16 +419,23 @@ actor {
     };
   };
 
-  // NEW METHODS - No auth required to enable cross-device login
   // Query student profile by username - returns full profile including password hash
+  // REQUIRES AUTHENTICATION to protect password data
   public query ({ caller }) func getStudentByUsername(username : Text) : async ?StudentProfile {
+    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
+      Runtime.trap("Unauthorized: Only registered users can look up student profiles");
+    };
     studentProfiles.values().find(
       func(s) { s.username == username }
     );
   };
 
-  // Query parent profile by username (no auth) - returns full profile including password hash
+  // Query parent profile by username - returns full profile including password hash
+  // REQUIRES AUTHENTICATION to protect password data
   public query ({ caller }) func getParentProfileByUsername(username : Text) : async ?ParentProfile {
+    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
+      Runtime.trap("Unauthorized: Only registered users can look up parent profiles");
+    };
     parentProfiles.get(username);
   };
 
@@ -702,6 +705,55 @@ actor {
         status.isTyping and timeDiff < 3;
       };
       case (null) { false };
+    };
+  };
+
+  // ------ NEW METHODS FOR GENERIC USER DATA STORAGE (NO AUTH AS REQUESTED) ------
+  // WARNING: These endpoints have no authorization as per user requirements.
+  // This means anyone can read/write any user's data if they know the username.
+  // This is inherently insecure but implemented as specified.
+
+  /// Save user data (username + dataType) JSON blob
+  public shared ({ caller }) func saveUserData(username : Text, dataType : Text, jsonBlob : Text) : async () {
+    if (username == "" or dataType == "" or jsonBlob == "") {
+      Runtime.trap("Username, dataType, and jsonBlob must not be empty");
+    };
+
+    let userMap = switch (userDataStore.get(username)) {
+      case (?map) { map };
+      case (null) {
+        let newMap = Map.empty<Text, Text>();
+        userDataStore.add(username, newMap);
+        newMap;
+      };
+    };
+    userMap.add(dataType, jsonBlob);
+  };
+
+  /// Get user data by username + dataType
+  public query ({ caller }) func getUserData(username : Text, dataType : Text) : async ?Text {
+    if (username == "" or dataType == "") {
+      Runtime.trap("Username and dataType must not be empty");
+    };
+
+    switch (userDataStore.get(username)) {
+      case (?userMap) { userMap.get(dataType) };
+      case (null) { null };
+    };
+  };
+
+  /// List all data types stored for a given username
+  public query ({ caller }) func listUserDataTypes(username : Text) : async [Text] {
+    if (username == "") {
+      Runtime.trap("Username must not be empty");
+    };
+
+    switch (userDataStore.get(username)) {
+      case (?userMap) {
+        let iter = userMap.keys();
+        iter.toArray();
+      };
+      case (null) { [] };
     };
   };
 };

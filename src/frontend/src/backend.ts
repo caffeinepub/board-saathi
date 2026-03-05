@@ -158,12 +158,24 @@ export interface backendInterface {
     getPresence(user: Principal): Promise<PresenceInfo>;
     getStudentByUsername(username: string): Promise<StudentProfile | null>;
     getTypingStatus(user: Principal): Promise<boolean>;
+    /**
+     * / Get user data by username + dataType
+     */
+    getUserData(username: string, dataType: string): Promise<string | null>;
     getUserProfile(user: Principal): Promise<UserProfile | null>;
     isCallerAdmin(): Promise<boolean>;
+    /**
+     * / List all data types stored for a given username
+     */
+    listUserDataTypes(username: string): Promise<Array<string>>;
     markMessagesRead(sender: Principal): Promise<void>;
     registerParent(username: string, name: string, linkedStudentUsername: string, password: string): Promise<void>;
     registerStudent(username: string, name: string, school: string, studentClass: bigint, password: string): Promise<void>;
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
+    /**
+     * / Save user data (username + dataType) JSON blob
+     */
+    saveUserData(username: string, dataType: string, jsonBlob: string): Promise<void>;
     sendMessage(recipient: Principal, senderRole: string, content: string): Promise<void>;
     setTyping(isTyping: boolean): Promise<void>;
     updateFeedback(feedbackId: bigint, updatedMessage: string, feedbackType: FeedbackType): Promise<void>;
@@ -388,6 +400,20 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async getUserData(arg0: string, arg1: string): Promise<string | null> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getUserData(arg0, arg1);
+                return from_candid_opt_n15(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getUserData(arg0, arg1);
+            return from_candid_opt_n15(this._uploadFile, this._downloadFile, result);
+        }
+    }
     async getUserProfile(arg0: Principal): Promise<UserProfile | null> {
         if (this.processError) {
             try {
@@ -413,6 +439,20 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.isCallerAdmin();
+            return result;
+        }
+    }
+    async listUserDataTypes(arg0: string): Promise<Array<string>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.listUserDataTypes(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.listUserDataTypes(arg0);
             return result;
         }
     }
@@ -469,6 +509,20 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.saveCallerUserProfile(arg0);
+            return result;
+        }
+    }
+    async saveUserData(arg0: string, arg1: string, arg2: string): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.saveUserData(arg0, arg1, arg2);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.saveUserData(arg0, arg1, arg2);
             return result;
         }
     }
@@ -542,6 +596,9 @@ function from_candid_opt_n13(_uploadFile: (file: ExternalBlob) => Promise<Uint8A
     return value.length === 0 ? null : value[0];
 }
 function from_candid_opt_n14(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_StudentProfile]): StudentProfile | null {
+    return value.length === 0 ? null : value[0];
+}
+function from_candid_opt_n15(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [string]): string | null {
     return value.length === 0 ? null : value[0];
 }
 function from_candid_opt_n5(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_UserProfile]): UserProfile | null {

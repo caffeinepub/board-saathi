@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
+  Cloud,
   Eye,
   EyeOff,
   GraduationCap,
@@ -18,6 +19,7 @@ import {
 import type React from "react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useActor } from "../hooks/useActor";
 import {
   clearCurrentSession,
   getCurrentUserAccount,
@@ -25,10 +27,12 @@ import {
   saveUserAccount,
   updateUserPassword,
 } from "../utils/localStorageService";
+import { flushQueue, pullAllData } from "../utils/syncService";
 
 export default function ProfilePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { actor } = useActor();
   const guest = isGuest();
   const account = guest ? null : getCurrentUserAccount();
 
@@ -38,6 +42,7 @@ export default function ProfilePage() {
     String(account?.studentClass ?? "10"),
   );
   const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -103,6 +108,31 @@ export default function ProfilePage() {
     queryClient.clear();
     toast.success("Logged out successfully");
     navigate({ to: "/login" });
+  };
+
+  const handleSyncNow = async () => {
+    if (!account || !actor) {
+      toast.error("Cannot sync: not connected to server.");
+      return;
+    }
+    if (!navigator.onLine) {
+      toast.error("Cannot sync: you are offline.");
+      return;
+    }
+    setSyncing(true);
+    try {
+      const username = account.username;
+      toast.info("Uploading your data...", { duration: 2000 });
+      await flushQueue(username, actor);
+      toast.info("Downloading latest data...", { duration: 2000 });
+      await pullAllData(username, actor);
+      toast.success("Data synced successfully! ✓");
+    } catch (e) {
+      toast.error("Sync failed. Please try again.");
+      console.error("[ProfilePage] Sync failed:", e);
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const handleUpgradeApp = () => {
@@ -348,6 +378,42 @@ export default function ProfilePage() {
               {changingPw ? "Changing..." : "Change Password"}
             </Button>
           </form>
+        </CardContent>
+      </Card>
+
+      {/* Sync Data */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Cloud className="w-4 h-4 text-primary" />
+            Sync Data
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground mb-3">
+            Upload your local data to the global server and download the latest
+            from any other device you've used. Sync keeps your profile
+            consistent across all devices.
+          </p>
+          <Button
+            data-ocid="profile.sync.primary_button"
+            variant="outline"
+            className="w-full gap-2"
+            onClick={handleSyncNow}
+            disabled={syncing || !actor}
+          >
+            {syncing ? (
+              <span className="w-4 h-4 border-2 border-foreground/30 border-t-foreground rounded-full animate-spin" />
+            ) : (
+              <Cloud className="w-4 h-4" />
+            )}
+            {syncing ? "Syncing..." : "Sync Now"}
+          </Button>
+          {!actor && (
+            <p className="text-xs text-muted-foreground mt-2 text-center">
+              Connect to the internet to enable sync.
+            </p>
+          )}
         </CardContent>
       </Card>
 

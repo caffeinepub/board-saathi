@@ -42,6 +42,7 @@ import {
   updateUserPassword,
   validateCredentials,
 } from "../utils/localStorageService";
+import { pullAllData } from "../utils/syncService";
 
 type Mode = "login" | "register";
 
@@ -107,6 +108,14 @@ export default function LoginPage() {
         const stableUserId = `user_${localAccount.username}`;
         setCurrentUserId(stableUserId);
         initializeUserData(stableUserId);
+        // Pull latest data from canister (non-blocking, best-effort)
+        if (actor) {
+          toast.info("Syncing your data...", { duration: 2000 });
+          const syncTimeout = new Promise<void>((resolve) =>
+            setTimeout(resolve, 5000),
+          );
+          await Promise.race([pullAllData(username, actor), syncTimeout]);
+        }
         toast.success(`Welcome back, ${localAccount.name}!`);
         navigate({ to: "/" });
         return;
@@ -136,6 +145,12 @@ export default function LoginPage() {
             const stableUserId = `user_${username}`;
             setCurrentUserId(stableUserId);
             initializeUserData(stableUserId);
+            // Pull all user data from canister
+            toast.info("Syncing your data...", { duration: 2000 });
+            const syncTimeout = new Promise<void>((resolve) =>
+              setTimeout(resolve, 5000),
+            );
+            await Promise.race([pullAllData(username, actor), syncTimeout]);
             toast.success(
               `Welcome back, ${backendStudent.name}! Profile synced from server.`,
             );
