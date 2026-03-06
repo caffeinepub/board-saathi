@@ -9,13 +9,14 @@ import Iter "mo:core/Iter";
 import Runtime "mo:core/Runtime";
 import Authorization "authorization/access-control";
 import MixinAuthorization "authorization/MixinAuthorization";
-import Migration "migration";
+import MixinStorage "blob-storage/Mixin";
 
 // Apply migration using with-clause
-(with migration = Migration.run)
+
 actor {
   let accessControlState = Authorization.initState();
   include MixinAuthorization(accessControlState);
+  include MixinStorage();
 
   public type Password = {
     hash : Text;
@@ -419,23 +420,15 @@ actor {
     };
   };
 
-  // Query student profile by username - returns full profile including password hash
-  // REQUIRES AUTHENTICATION to protect password data
-  public query ({ caller }) func getStudentByUsername(username : Text) : async ?StudentProfile {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only registered users can look up student profiles");
-    };
+  // Query student profile by username - NO AUTHORIZATION (public method for anonymous principals)
+  public query func getStudentByUsername(username : Text) : async ?StudentProfile {
     studentProfiles.values().find(
       func(s) { s.username == username }
     );
   };
 
-  // Query parent profile by username - returns full profile including password hash
-  // REQUIRES AUTHENTICATION to protect password data
-  public query ({ caller }) func getParentProfileByUsername(username : Text) : async ?ParentProfile {
-    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only registered users can look up parent profiles");
-    };
+  // Query parent profile by username - NO AUTHORIZATION (public method for anonymous principals)
+  public query func getParentProfileByUsername(username : Text) : async ?ParentProfile {
     parentProfiles.get(username);
   };
 

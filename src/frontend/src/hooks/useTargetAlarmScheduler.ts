@@ -19,8 +19,8 @@ function showNotification(title: string, body: string) {
   if ("Notification" in window && Notification.permission === "granted") {
     new Notification(title, {
       body,
-      icon: "/assets/app-icon.svg",
-      badge: "/assets/app-icon.svg",
+      icon: "/assets/generated/dev-winner-icon.dim_512x512.png",
+      badge: "/assets/generated/dev-winner-icon.dim_512x512.png",
     });
   }
 }

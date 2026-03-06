@@ -12,7 +12,7 @@ export default function PWAInstallBanner() {
         {/* Icon */}
         <div className="flex-shrink-0">
           <img
-            src="/assets/generated/board-saathi-icon-192.dim_192x192.png"
+            src="/assets/generated/dev-winner-icon-192.dim_192x192.png"
             alt="Board Saathi"
             className="w-12 h-12 rounded-xl shadow-md"
           />

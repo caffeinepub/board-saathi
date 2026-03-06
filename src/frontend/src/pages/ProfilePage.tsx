@@ -105,9 +105,13 @@ export default function ProfilePage() {
 
   const handleLogout = () => {
     clearCurrentSession();
+    // Also clear parent session if any
+    localStorage.removeItem("bs_parentSession");
     queryClient.clear();
     toast.success("Logged out successfully");
-    navigate({ to: "/login" });
+    // Force a full page reload to "/login" so the router re-evaluates auth state
+    // from scratch — prevents cached route state from keeping the user logged in.
+    window.location.href = "/login";
   };
 
   const handleSyncNow = async () => {

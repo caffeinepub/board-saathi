@@ -11,12 +11,14 @@ import {
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
+import { ExternalBlob } from "../backend";
 import {
   type LocalNote,
   useAddNote,
   useDeleteNote,
   useGetNotesForChapter,
 } from "../hooks/useQueries";
+import { compressImage } from "../utils/imageCompression";
 
 function NoteCard({
   note,
@@ -85,17 +87,41 @@ export default function NotesSection({ chapterId }: NotesSectionProps) {
 
   const [content, setContent] = useState("");
   const [imageData, setImageData] = useState<string | undefined>(undefined);
+  const [imagePreview, setImagePreview] = useState<string | undefined>(
+    undefined,
+  );
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setImageData(ev.target?.result as string);
-    };
-    reader.readAsDataURL(file);
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawFile = e.target.files?.[0];
+    if (!rawFile) return;
+
+    // Set a local preview immediately for UX
+    const previewUrl = URL.createObjectURL(rawFile);
+    setImagePreview(previewUrl);
+    setImageData(undefined);
+    setUploadingImage(true);
+
+    try {
+      // Compress before uploading — large photos become ~150 KB
+      const file = await compressImage(rawFile);
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const blob = ExternalBlob.fromBytes(bytes);
+      await blob.getBytes(); // triggers upload
+      const url = blob.getDirectURL();
+      setImageData(url);
+      URL.revokeObjectURL(previewUrl);
+      setImagePreview(undefined);
+    } catch {
+      toast.error("Failed to upload image. Please try again.");
+      URL.revokeObjectURL(previewUrl);
+      setImagePreview(undefined);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } finally {
+      setUploadingImage(false);
+    }
   };
 
   const handleAdd = async () => {
@@ -112,6 +138,7 @@ export default function NotesSection({ chapterId }: NotesSectionProps) {
       toast.success("Note added!");
       setContent("");
       setImageData(undefined);
+      setImagePreview(undefined);
       setShowForm(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     } catch {
@@ -169,18 +196,28 @@ export default function NotesSection({ chapterId }: NotesSectionProps) {
               variant="outline"
               size="sm"
               onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingImage}
               className="gap-1"
             >
-              <Image className="w-3.5 h-3.5" />
-              {imageData ? "Change Image" : "Attach Image"}
+              {uploadingImage ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Image className="w-3.5 h-3.5" />
+              )}
+              {uploadingImage
+                ? "Uploading…"
+                : imageData
+                  ? "Change Image"
+                  : "Attach Image"}
             </Button>
-            {imageData && (
+            {(imageData || imagePreview) && !uploadingImage && (
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
                 onClick={() => {
                   setImageData(undefined);
+                  setImagePreview(undefined);
                   if (fileInputRef.current) fileInputRef.current.value = "";
                 }}
                 className="text-destructive"
@@ -196,9 +233,9 @@ export default function NotesSection({ chapterId }: NotesSectionProps) {
               onChange={handleImageUpload}
             />
           </div>
-          {imageData && (
+          {(imagePreview || imageData) && (
             <img
-              src={imageData}
+              src={imagePreview ?? imageData}
               alt="Preview"
               className="rounded-md max-h-32 object-contain"
             />
@@ -207,7 +244,7 @@ export default function NotesSection({ chapterId }: NotesSectionProps) {
             <Button
               size="sm"
               onClick={handleAdd}
-              disabled={addNote.isPending}
+              disabled={addNote.isPending || uploadingImage}
               className="flex-1"
             >
               {addNote.isPending ? (
@@ -222,6 +259,7 @@ export default function NotesSection({ chapterId }: NotesSectionProps) {
                 setShowForm(false);
                 setContent("");
                 setImageData(undefined);
+                setImagePreview(undefined);
               }}
             >
               Cancel

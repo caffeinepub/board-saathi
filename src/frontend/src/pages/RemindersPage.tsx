@@ -26,14 +26,18 @@ import {
   Volume2,
   VolumeX,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import {
   useAddReminder,
   useDeleteReminder,
   useGetReminders,
 } from "../hooks/useQueries";
-import { ALARM_SOUNDS, DEFAULT_ALARM_SOUND } from "../hooks/useReminderAlarm";
+import {
+  ALARM_SOUNDS,
+  DEFAULT_ALARM_SOUND,
+  useReminderAlarm,
+} from "../hooks/useReminderAlarm";
 import { useReminderScheduler } from "../hooks/useReminderScheduler";
 
 export default function RemindersPage() {
@@ -43,8 +47,8 @@ export default function RemindersPage() {
   const [reminderTime, setReminderTime] = useState("");
   const [alarmSound, setAlarmSound] = useState<string>(DEFAULT_ALARM_SOUND);
   const [previewPlaying, setPreviewPlaying] = useState(false);
-  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
 
+  const { previewAlarm, stopAlarm } = useReminderAlarm();
   const { data: reminders = [], isLoading } = useGetReminders();
   const addReminderMutation = useAddReminder();
   const deleteReminderMutation = useDeleteReminder();
@@ -52,32 +56,20 @@ export default function RemindersPage() {
   // Schedule notifications and alarms for all reminders
   useReminderScheduler(reminders);
 
-  const handlePreviewSound = () => {
-    const sound = ALARM_SOUNDS[alarmSound];
-    if (!sound) return;
-
+  const handlePreviewSound = async () => {
     if (previewPlaying) {
-      previewAudioRef.current?.pause();
-      if (previewAudioRef.current) previewAudioRef.current.currentTime = 0;
+      stopAlarm();
       setPreviewPlaying(false);
       return;
     }
-
     try {
-      const audio = new Audio(sound.path);
-      previewAudioRef.current = audio;
-      audio.onended = () => setPreviewPlaying(false);
-      audio
-        .play()
-        .then(() => setPreviewPlaying(true))
-        .catch(() => {
-          toast.error(
-            "Could not play preview. Try interacting with the page first.",
-          );
-          setPreviewPlaying(false);
-        });
+      setPreviewPlaying(true);
+      await previewAlarm(alarmSound);
+      // Reset after ~3.5 seconds (single play)
+      setTimeout(() => setPreviewPlaying(false), 3500);
     } catch {
       toast.error("Audio preview not supported on this device.");
+      setPreviewPlaying(false);
     }
   };
 
@@ -137,8 +129,7 @@ export default function RemindersPage() {
   const handleDialogClose = (open: boolean) => {
     if (!open) {
       // Stop preview if playing
-      previewAudioRef.current?.pause();
-      if (previewAudioRef.current) previewAudioRef.current.currentTime = 0;
+      stopAlarm();
       setPreviewPlaying(false);
       setReminderText("");
       setReminderDate("");

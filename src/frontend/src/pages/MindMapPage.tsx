@@ -11,15 +11,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Download,
   Edit2,
   Eye,
   GitBranch,
   LogOut,
   Palette,
+  Pencil,
   Plus,
   Save,
   Trash2,
   X,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import {
   type CSSProperties,
@@ -60,6 +64,61 @@ const DEFAULT_COLORS: Record<number, string> = {
   5: "#0d9488",
 };
 
+// ── Paper sizes (in pixels at 96dpi) ─────────────────────────────────────────
+const PAPER_SIZES = [
+  { label: "A4 Portrait", key: "a4p", w: 794, h: 1123 },
+  { label: "A4 Landscape", key: "a4l", w: 1123, h: 794 },
+  { label: "A3 Portrait", key: "a3p", w: 1123, h: 1587 },
+  { label: "A3 Landscape", key: "a3l", w: 1587, h: 1123 },
+  { label: "HD (1920×1080)", key: "hd", w: 1920, h: 1080 },
+  { label: "Square (1080×1080)", key: "sq", w: 1080, h: 1080 },
+];
+
+// ── Node dimension helpers ────────────────────────────────────────────────────
+const FONT_SIZE = 13;
+const H_PAD = 20;
+const V_PAD = 14;
+const LINE_H = FONT_SIZE * 1.4;
+const MAX_LINE_CHARS = 22;
+const MIN_NODE_W = 100;
+const MIN_NODE_H = 40;
+
+/** Split text into lines respecting MAX_LINE_CHARS */
+function splitLines(text: string): string[] {
+  const words = text.split(" ");
+  const lines: string[] = [];
+  let cur = "";
+  for (const word of words) {
+    if ((cur + (cur ? " " : "") + word).length <= MAX_LINE_CHARS) {
+      cur = cur ? `${cur} ${word}` : word;
+    } else {
+      if (cur) lines.push(cur);
+      // if single word is too long, hard-break it
+      if (word.length > MAX_LINE_CHARS) {
+        for (let i = 0; i < word.length; i += MAX_LINE_CHARS) {
+          lines.push(word.slice(i, i + MAX_LINE_CHARS));
+        }
+        cur = "";
+      } else {
+        cur = word;
+      }
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines.length ? lines : [""];
+}
+
+function getNodeDims(text: string): { w: number; h: number; lines: string[] } {
+  const lines = splitLines(text);
+  const longestLine = lines.reduce((a, b) => (a.length > b.length ? a : b), "");
+  const w = Math.max(
+    MIN_NODE_W,
+    longestLine.length * FONT_SIZE * 0.6 + H_PAD * 2,
+  );
+  const h = Math.max(MIN_NODE_H, lines.length * LINE_H + V_PAD * 2);
+  return { w, h, lines };
+}
+
 function nodeDepth(nodes: MindMapNode[], id: string): number {
   const node = nodes.find((n) => n.id === id);
   if (!node || node.parentId === null) return 0;
@@ -75,9 +134,6 @@ function getFgColor(bg: string): string {
   return luma > 140 ? "#1a1a1a" : "#ffffff";
 }
 
-const NODE_W = 140;
-const NODE_H = 44;
-
 type View = "list" | "editor" | "viewer" | "create";
 
 function makeRootNode(title: string): MindMapNode {
@@ -89,6 +145,303 @@ function makeRootNode(title: string): MindMapNode {
     color: "#2563eb",
     parentId: null,
   };
+}
+
+// ── Render a node as SVG <g> ──────────────────────────────────────────────────
+function NodeShape({
+  n,
+  isSelected,
+  onPointerDown,
+  onClick,
+  onKeyDown,
+  interactive = true,
+}: {
+  n: MindMapNode;
+  isSelected?: boolean;
+  onPointerDown?: (
+    e: React.MouseEvent<SVGGElement> | React.TouchEvent<SVGGElement>,
+  ) => void;
+  onClick?: (e: React.MouseEvent<SVGGElement>) => void;
+  onKeyDown?: (e: React.KeyboardEvent<SVGGElement>) => void;
+  interactive?: boolean;
+}) {
+  const { w, h, lines } = getNodeDims(n.text);
+  const fg = getFgColor(n.color);
+  const firstLineY = h / 2 - ((lines.length - 1) * LINE_H) / 2;
+
+  return (
+    <g
+      transform={`translate(${n.x},${n.y})`}
+      onMouseDown={
+        interactive
+          ? (onPointerDown as React.MouseEventHandler<SVGGElement>)
+          : undefined
+      }
+      onTouchStart={
+        interactive
+          ? (onPointerDown as React.TouchEventHandler<SVGGElement>)
+          : undefined
+      }
+      onClick={interactive ? onClick : undefined}
+      onKeyDown={interactive ? onKeyDown : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      aria-label={`Node: ${n.text}`}
+      style={{ cursor: interactive ? "grab" : "default" }}
+      data-ocid={`mindmap.node.item.${n.id}`}
+    >
+      <rect
+        width={w}
+        height={h}
+        rx={12}
+        fill={n.color}
+        stroke={isSelected ? "#facc15" : "rgba(255,255,255,0.15)"}
+        strokeWidth={isSelected ? 3 : 1.5}
+        filter={
+          isSelected
+            ? "drop-shadow(0 0 10px rgba(250,204,21,0.8))"
+            : "drop-shadow(0 3px 6px rgba(0,0,0,0.4))"
+        }
+      />
+      {lines.map((line, li) => (
+        <text
+          key={`${li}-${line}`}
+          x={w / 2}
+          y={firstLineY + li * LINE_H}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fill={fg}
+          fontSize={FONT_SIZE}
+          fontWeight={n.parentId === null ? "bold" : "normal"}
+          fontFamily="sans-serif"
+          style={{ pointerEvents: "none" }}
+        >
+          {line}
+        </text>
+      ))}
+    </g>
+  );
+}
+
+/** Draw connector between two nodes (bezier curve) */
+function EdgePath({ from, to }: { from: MindMapNode; to: MindMapNode }) {
+  const { w: fw, h: fh } = getNodeDims(from.text);
+  const { w: tw, h: th } = getNodeDims(to.text);
+  const x1 = from.x + fw / 2;
+  const y1 = from.y + fh / 2;
+  const x2 = to.x + tw / 2;
+  const y2 = to.y + th / 2;
+  const mx = (x1 + x2) / 2;
+  return (
+    <path
+      d={`M${x1},${y1} Q${mx},${y1} ${x2},${y2}`}
+      stroke={to.color}
+      strokeWidth={2.5}
+      fill="none"
+      opacity={0.8}
+    />
+  );
+}
+
+// ── Export mindmap to image ───────────────────────────────────────────────────
+function exportMindMapToImage(
+  nodes: MindMapNode[],
+  paperKey: string,
+  mapTitle: string,
+) {
+  const paper = PAPER_SIZES.find((p) => p.key === paperKey) ?? PAPER_SIZES[0];
+  const PADDING = 60;
+
+  // Compute bounding box of all nodes
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  for (const n of nodes) {
+    const { w, h } = getNodeDims(n.text);
+    minX = Math.min(minX, n.x);
+    minY = Math.min(minY, n.y);
+    maxX = Math.max(maxX, n.x + w);
+    maxY = Math.max(maxY, n.y + h);
+  }
+
+  const contentW = maxX - minX;
+  const contentH = maxY - minY;
+  const availW = paper.w - PADDING * 2;
+  const availH = paper.h - PADDING * 2;
+  const scale = Math.min(availW / contentW, availH / contentH, 2);
+
+  const scaledW = contentW * scale;
+  const scaledH = contentH * scale;
+  const offsetX = PADDING + (availW - scaledW) / 2 - minX * scale;
+  const offsetY = PADDING + (availH - scaledH) / 2 - minY * scale;
+
+  // Build SVG string
+  let svgParts: string[] = [];
+  svgParts.push(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${paper.w}" height="${paper.h}">`,
+    `<rect width="${paper.w}" height="${paper.h}" fill="#0f172a"/>`,
+    // grid dots
+    `<defs><pattern id="g" width="40" height="40" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="rgba(255,255,255,0.08)"/></pattern></defs>`,
+    `<rect width="${paper.w}" height="${paper.h}" fill="url(#g)"/>`,
+    // title
+    `<text x="${paper.w / 2}" y="32" text-anchor="middle" fill="rgba(255,255,255,0.5)" font-size="18" font-family="sans-serif" font-weight="bold">${mapTitle}</text>`,
+    `<g transform="translate(${offsetX},${offsetY}) scale(${scale})">`,
+  );
+
+  // Edges
+  for (const n of nodes) {
+    if (!n.parentId) continue;
+    const parent = nodes.find((p) => p.id === n.parentId);
+    if (!parent) continue;
+    const { w: fw, h: fh } = getNodeDims(parent.text);
+    const { w: tw, h: th } = getNodeDims(n.text);
+    const x1 = parent.x + fw / 2;
+    const y1 = parent.y + fh / 2;
+    const x2 = n.x + tw / 2;
+    const y2 = n.y + th / 2;
+    const mx = (x1 + x2) / 2;
+    svgParts.push(
+      `<path d="M${x1},${y1} Q${mx},${y1} ${x2},${y2}" stroke="${n.color}" stroke-width="2.5" fill="none" opacity="0.8"/>`,
+    );
+  }
+
+  // Nodes
+  for (const n of nodes) {
+    const { w, h, lines } = getNodeDims(n.text);
+    const fg = getFgColor(n.color);
+    const firstLineY = h / 2 - ((lines.length - 1) * LINE_H) / 2;
+    const fontWeight = n.parentId === null ? "bold" : "normal";
+    const textLines = lines
+      .map(
+        (line, li) =>
+          `<text x="${w / 2}" y="${firstLineY + li * LINE_H}" text-anchor="middle" dominant-baseline="middle" fill="${fg}" font-size="${FONT_SIZE}" font-weight="${fontWeight}" font-family="sans-serif">${line}</text>`,
+      )
+      .join("");
+    svgParts.push(
+      `<g transform="translate(${n.x},${n.y})">`,
+      `<rect width="${w}" height="${h}" rx="12" fill="${n.color}" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/>`,
+      textLines,
+      "</g>",
+    );
+  }
+
+  svgParts.push("</g></svg>");
+  const svgString = svgParts.join("");
+
+  // Render to canvas and download
+  const img = new Image();
+  const blob = new Blob([svgString], { type: "image/svg+xml" });
+  const url = URL.createObjectURL(blob);
+  img.onload = () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = paper.w;
+    canvas.height = paper.h;
+    const ctx = canvas.getContext("2d")!;
+    ctx.drawImage(img, 0, 0);
+    URL.revokeObjectURL(url);
+    canvas.toBlob((b) => {
+      if (!b) {
+        toast.error("Failed to generate image.");
+        return;
+      }
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(b);
+      a.download = `mindmap_${mapTitle.replace(/\s+/g, "_")}_${paper.label.replace(/\s+/g, "_")}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      toast.success(`Saved as ${paper.label} image!`);
+    }, "image/png");
+  };
+  img.onerror = () => {
+    URL.revokeObjectURL(url);
+    toast.error("Failed to render image.");
+  };
+  img.src = url;
+}
+
+// ─── Save in Device Modal ─────────────────────────────────────────────────────
+function SaveInDeviceModal({
+  map,
+  onClose,
+}: {
+  map: LocalMindMap;
+  onClose: () => void;
+}) {
+  const [selectedSize, setSelectedSize] = useState(PAPER_SIZES[0].key);
+
+  const handleSave = () => {
+    exportMindMapToImage(map.nodes, selectedSize, map.title);
+    onClose();
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
+      data-ocid="mindmap.save_device.modal"
+    >
+      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-6 w-full max-w-sm">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold flex items-center gap-2">
+            <Download className="w-5 h-5 text-primary" />
+            Save in Device
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-muted-foreground hover:text-foreground"
+            data-ocid="mindmap.save_device.close_button"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <p className="text-sm text-muted-foreground mb-4">
+          Choose a size. Nodes will auto-adjust to fit the selected paper size.
+        </p>
+
+        <div className="space-y-2 mb-6">
+          {PAPER_SIZES.map((ps) => (
+            <button
+              key={ps.key}
+              type="button"
+              onClick={() => setSelectedSize(ps.key)}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-colors text-sm font-medium ${
+                selectedSize === ps.key
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border hover:border-primary/40"
+              }`}
+              data-ocid={`mindmap.save_device.size.${ps.key}`}
+            >
+              <span>{ps.label}</span>
+              <span className="text-xs text-muted-foreground">
+                {ps.w}×{ps.h}px
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <div className="flex gap-3">
+          <Button
+            variant="outline"
+            className="flex-1"
+            onClick={onClose}
+            data-ocid="mindmap.save_device.cancel_button"
+          >
+            Cancel
+          </Button>
+          <Button
+            className="flex-1 gap-2"
+            onClick={handleSave}
+            data-ocid="mindmap.save_device.save_button"
+          >
+            <Download className="w-4 h-4" />
+            Save Image
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ─── Fullscreen Mind Map Editor ───────────────────────────────────────────────
@@ -104,9 +457,12 @@ function FullscreenEditor({ map, onSaveAndExit }: FullscreenEditorProps) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>("root");
   const [showColorPicker, setShowColorPicker] = useState(false);
 
-  // Canvas pan / zoom state
+  // Canvas pan + zoom state
   const [offset, setOffset] = useState({ x: 0, y: 0 });
-  const scale = 1;
+  const [scale, setScale] = useState(1.0);
+
+  const zoomIn = () => setScale((s) => Math.min(3.0, +(s + 0.15).toFixed(2)));
+  const zoomOut = () => setScale((s) => Math.max(0.3, +(s - 0.15).toFixed(2)));
 
   const svgRef = useRef<SVGSVGElement>(null);
   const nodesRef = useRef<MindMapNode[]>(nodes);
@@ -218,7 +574,7 @@ function FullscreenEditor({ map, onSaveAndExit }: FullscreenEditorProps) {
       window.removeEventListener("touchmove", onTouchMove);
       window.removeEventListener("touchend", onTouchEnd);
     };
-  }, [offset]);
+  }, [offset, scale]);
 
   // ── Node pointer down — start drag ──────────────────────────────────────
   const handleNodePointerDown = (
@@ -297,7 +653,7 @@ function FullscreenEditor({ map, onSaveAndExit }: FullscreenEditorProps) {
       return;
     }
 
-    const text = window.prompt("Enter node text:", "New Topic");
+    const text = window.prompt("Enter node text (any length):", "New Topic");
     if (text === null) return;
     const trimmed = text.trim() || "New Topic";
 
@@ -305,13 +661,13 @@ function FullscreenEditor({ map, onSaveAndExit }: FullscreenEditorProps) {
     const colorIdx = depth % NODE_COLORS.length;
     const siblings = currentNodes.filter((n) => n.parentId === targetId);
     const spreadOffset =
-      (siblings.length - Math.floor(siblings.length / 2)) * 80;
+      (siblings.length - Math.floor(siblings.length / 2)) * 100;
 
+    const { w: parentW } = getNodeDims(parent.text);
     const newNode: MindMapNode = {
       id: `node_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       text: trimmed,
-      // Place relative to parent, using CANVAS coordinates (not screen)
-      x: parent.x + 180,
+      x: parent.x + parentW + 60,
       y: parent.y + spreadOffset,
       color: DEFAULT_COLORS[colorIdx] ?? "#2563eb",
       parentId: targetId,
@@ -324,23 +680,24 @@ function FullscreenEditor({ map, onSaveAndExit }: FullscreenEditorProps) {
     });
     setSelectedNodeId(newNode.id);
 
-    // Auto-scroll so new node is visible — shift offset so new node is centered
+    // Auto-scroll so new node is visible
     setTimeout(() => {
       const svg = svgRef.current;
       if (!svg) return;
       const rect = svg.getBoundingClientRect();
+      const { w: nw, h: nh } = getNodeDims(newNode.text);
       const screenX = newNode.x * scale + offset.x;
       const screenY = newNode.y * scale + offset.y;
       const margin = 80;
       let newOffX = offset.x;
       let newOffY = offset.y;
       if (screenX > rect.width - margin) {
-        newOffX -= screenX - (rect.width - margin - NODE_W * scale);
+        newOffX -= screenX - (rect.width - margin - nw * scale);
       } else if (screenX < margin) {
         newOffX += margin - screenX;
       }
       if (screenY > rect.height - margin) {
-        newOffY -= screenY - (rect.height - margin - NODE_H * scale);
+        newOffY -= screenY - (rect.height - margin - nh * scale);
       } else if (screenY < margin) {
         newOffY += margin - screenY;
       }
@@ -348,6 +705,27 @@ function FullscreenEditor({ map, onSaveAndExit }: FullscreenEditorProps) {
     }, 50);
 
     toast.success("Node added! Tap it to select, then drag to move.");
+  };
+
+  // ── Rename Node ──────────────────────────────────────────────────────────
+  const handleRenameNode = () => {
+    if (!selectedNodeId) {
+      toast.error("Select a node to rename.");
+      return;
+    }
+    const node = nodesRef.current.find((n) => n.id === selectedNodeId);
+    if (!node) return;
+    const newText = window.prompt("Enter new name for node:", node.text);
+    if (newText === null) return;
+    const trimmed = newText.trim();
+    if (!trimmed) {
+      toast.error("Node name cannot be empty.");
+      return;
+    }
+    setNodes((prev) =>
+      prev.map((n) => (n.id === selectedNodeId ? { ...n, text: trimmed } : n)),
+    );
+    toast.success("Node renamed!");
   };
 
   // ── Delete Node ──────────────────────────────────────────────────────────
@@ -425,84 +803,34 @@ function FullscreenEditor({ map, onSaveAndExit }: FullscreenEditorProps) {
             .map((n) => {
               const parent = nodes.find((p) => p.id === n.parentId);
               if (!parent) return null;
-              const x1 = parent.x + NODE_W / 2;
-              const y1 = parent.y + NODE_H / 2;
-              const x2 = n.x + NODE_W / 2;
-              const y2 = n.y + NODE_H / 2;
-              const mx = (x1 + x2) / 2;
-              const d = `M${x1},${y1} Q${mx},${y1} ${x2},${y2}`;
-              return (
-                <path
-                  key={`edge-${n.id}`}
-                  d={d}
-                  stroke={n.color}
-                  strokeWidth={2.5}
-                  fill="none"
-                  opacity={0.8}
-                />
-              );
+              return <EdgePath key={`edge-${n.id}`} from={parent} to={n} />;
             })}
 
           {/* Nodes */}
-          {nodes.map((n) => {
-            const isSelected = n.id === selectedNodeId;
-            const fg = getFgColor(n.color);
-            return (
-              <g
-                key={n.id}
-                transform={`translate(${n.x},${n.y})`}
-                onMouseDown={(e) => handleNodePointerDown(e, n.id)}
-                onTouchStart={(e) => handleNodePointerDown(e, n.id)}
-                onClick={(e) => {
+          {nodes.map((n) => (
+            <NodeShape
+              key={n.id}
+              n={n}
+              isSelected={n.id === selectedNodeId}
+              onPointerDown={(e) => handleNodePointerDown(e, n.id)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedNodeId(n.id);
+                setShowColorPicker(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
                   e.stopPropagation();
                   setSelectedNodeId(n.id);
-                  setShowColorPicker(false);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.stopPropagation();
-                    setSelectedNodeId(n.id);
-                  }
-                }}
-                tabIndex={0}
-                aria-label={`Node: ${n.text}`}
-                style={{ cursor: "grab" }}
-                data-ocid={`mindmap.node.item.${n.id}`}
-              >
-                <rect
-                  width={NODE_W}
-                  height={NODE_H}
-                  rx={12}
-                  fill={n.color}
-                  stroke={isSelected ? "#facc15" : "rgba(255,255,255,0.15)"}
-                  strokeWidth={isSelected ? 3 : 1.5}
-                  filter={
-                    isSelected
-                      ? "drop-shadow(0 0 10px rgba(250,204,21,0.8))"
-                      : "drop-shadow(0 3px 6px rgba(0,0,0,0.4))"
-                  }
-                />
-                <text
-                  x={NODE_W / 2}
-                  y={NODE_H / 2}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fill={fg}
-                  fontSize={12}
-                  fontWeight={n.parentId === null ? "bold" : "normal"}
-                  fontFamily="sans-serif"
-                  style={{ pointerEvents: "none" }}
-                >
-                  {n.text.length > 17 ? `${n.text.slice(0, 15)}…` : n.text}
-                </text>
-              </g>
-            );
-          })}
+                }
+              }}
+            />
+          ))}
         </g>
       </svg>
 
-      {/* ── Right sidebar with 4 buttons ─────────────────────────────────── */}
-      <div className="flex flex-col items-center justify-center gap-3 w-16 bg-gray-900 border-l border-white/10 py-6 relative z-10">
+      {/* ── Right sidebar ─────────────────────────────────────────────────── */}
+      <div className="flex flex-col items-center justify-center gap-2 w-16 bg-gray-900 border-l border-white/10 py-6 relative z-10 overflow-y-auto">
         {/* Map title at top */}
         <div className="absolute top-3 left-0 right-0 flex justify-center">
           <span
@@ -523,19 +851,35 @@ function FullscreenEditor({ map, onSaveAndExit }: FullscreenEditorProps) {
           </div>
         )}
 
+        {/* Spacer for title */}
+        <div className="h-8" />
+
         {/* 1. Add Node */}
         <button
           type="button"
           onClick={handleAddNode}
           className="flex flex-col items-center gap-1 p-2 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white transition-colors w-12"
-          title="Add Node (tap to add a branch to selected node)"
+          title="Add Node"
           data-ocid="mindmap.add_node.button"
         >
           <Plus className="w-5 h-5" />
           <span className="text-[9px] font-bold leading-none">Add</span>
         </button>
 
-        {/* 2. Delete */}
+        {/* 2. Rename Node */}
+        <button
+          type="button"
+          onClick={handleRenameNode}
+          disabled={!selectedNodeId}
+          className="flex flex-col items-center gap-1 p-2 rounded-xl bg-yellow-600 hover:bg-yellow-500 active:bg-yellow-700 disabled:bg-gray-700 disabled:text-gray-500 text-white transition-colors w-12"
+          title="Rename selected node"
+          data-ocid="mindmap.rename_node.button"
+        >
+          <Pencil className="w-5 h-5" />
+          <span className="text-[9px] font-bold leading-none">Rename</span>
+        </button>
+
+        {/* 3. Delete */}
         <button
           type="button"
           onClick={handleDelete}
@@ -548,7 +892,31 @@ function FullscreenEditor({ map, onSaveAndExit }: FullscreenEditorProps) {
           <span className="text-[9px] font-bold leading-none">Delete</span>
         </button>
 
-        {/* 3. Color */}
+        {/* 4. Zoom In */}
+        <button
+          type="button"
+          onClick={zoomIn}
+          className="flex flex-col items-center gap-1 p-2 rounded-xl bg-sky-700 hover:bg-sky-600 active:bg-sky-800 text-white transition-colors w-12"
+          title={`Zoom In (${Math.round(scale * 100)}%)`}
+          data-ocid="mindmap.zoom_in.button"
+        >
+          <ZoomIn className="w-5 h-5" />
+          <span className="text-[9px] font-bold leading-none">Zoom+</span>
+        </button>
+
+        {/* 5. Zoom Out */}
+        <button
+          type="button"
+          onClick={zoomOut}
+          className="flex flex-col items-center gap-1 p-2 rounded-xl bg-sky-700 hover:bg-sky-600 active:bg-sky-800 text-white transition-colors w-12"
+          title={`Zoom Out (${Math.round(scale * 100)}%)`}
+          data-ocid="mindmap.zoom_out.button"
+        >
+          <ZoomOut className="w-5 h-5" />
+          <span className="text-[9px] font-bold leading-none">Zoom-</span>
+        </button>
+
+        {/* 6. Color */}
         <div className="relative">
           <button
             type="button"
@@ -599,7 +967,7 @@ function FullscreenEditor({ map, onSaveAndExit }: FullscreenEditorProps) {
         {/* Divider */}
         <div className="w-8 h-px bg-white/10 my-1" />
 
-        {/* 4. Save & Exit */}
+        {/* 5. Save & Exit */}
         <button
           type="button"
           onClick={handleSaveAndExit}
@@ -631,7 +999,9 @@ interface FullscreenViewerProps {
 
 function FullscreenViewer({ map, onEdit, onExit }: FullscreenViewerProps) {
   const [offset, setOffset] = useState({ x: 0, y: 0 });
-  const scale = 1;
+  const [scale, setScale] = useState(1.0);
+  const zoomIn = () => setScale((s) => Math.min(3.0, +(s + 0.15).toFixed(2)));
+  const zoomOut = () => setScale((s) => Math.max(0.3, +(s - 0.15).toFixed(2)));
   const svgRef = useRef<SVGSVGElement>(null);
   const panStateRef = useRef<{
     startMouseX: number;
@@ -737,54 +1107,13 @@ function FullscreenViewer({ map, onEdit, onExit }: FullscreenViewerProps) {
             .map((n) => {
               const parent = nodes.find((p) => p.id === n.parentId);
               if (!parent) return null;
-              const x1 = parent.x + NODE_W / 2;
-              const y1 = parent.y + NODE_H / 2;
-              const x2 = n.x + NODE_W / 2;
-              const y2 = n.y + NODE_H / 2;
-              const mx = (x1 + x2) / 2;
-              const d = `M${x1},${y1} Q${mx},${y1} ${x2},${y2}`;
-              return (
-                <path
-                  key={`edge-${n.id}`}
-                  d={d}
-                  stroke={n.color}
-                  strokeWidth={2.5}
-                  fill="none"
-                  opacity={0.8}
-                />
-              );
+              return <EdgePath key={`edge-${n.id}`} from={parent} to={n} />;
             })}
 
           {/* Nodes (read-only, no drag) */}
-          {nodes.map((n) => {
-            const fg = getFgColor(n.color);
-            return (
-              <g key={n.id} transform={`translate(${n.x},${n.y})`}>
-                <rect
-                  width={NODE_W}
-                  height={NODE_H}
-                  rx={12}
-                  fill={n.color}
-                  stroke="rgba(255,255,255,0.15)"
-                  strokeWidth={1.5}
-                  filter="drop-shadow(0 3px 6px rgba(0,0,0,0.4))"
-                />
-                <text
-                  x={NODE_W / 2}
-                  y={NODE_H / 2}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fill={fg}
-                  fontSize={12}
-                  fontWeight={n.parentId === null ? "bold" : "normal"}
-                  fontFamily="sans-serif"
-                  style={{ pointerEvents: "none" }}
-                >
-                  {n.text.length > 17 ? `${n.text.slice(0, 15)}…` : n.text}
-                </text>
-              </g>
-            );
-          })}
+          {nodes.map((n) => (
+            <NodeShape key={n.id} n={n} interactive={false} />
+          ))}
         </g>
       </svg>
 
@@ -814,6 +1143,30 @@ function FullscreenViewer({ map, onEdit, onExit }: FullscreenViewerProps) {
         >
           <Edit2 className="w-5 h-5" />
           <span className="text-[9px] font-bold leading-none">Edit</span>
+        </button>
+
+        {/* Zoom In */}
+        <button
+          type="button"
+          onClick={zoomIn}
+          className="flex flex-col items-center gap-1 p-2 rounded-xl bg-sky-700 hover:bg-sky-600 active:bg-sky-800 text-white transition-colors w-12"
+          title={`Zoom In (${Math.round(scale * 100)}%)`}
+          data-ocid="mindmap.viewer.zoom_in.button"
+        >
+          <ZoomIn className="w-5 h-5" />
+          <span className="text-[9px] font-bold leading-none">Zoom+</span>
+        </button>
+
+        {/* Zoom Out */}
+        <button
+          type="button"
+          onClick={zoomOut}
+          className="flex flex-col items-center gap-1 p-2 rounded-xl bg-sky-700 hover:bg-sky-600 active:bg-sky-800 text-white transition-colors w-12"
+          title={`Zoom Out (${Math.round(scale * 100)}%)`}
+          data-ocid="mindmap.viewer.zoom_out.button"
+        >
+          <ZoomOut className="w-5 h-5" />
+          <span className="text-[9px] font-bold leading-none">Zoom-</span>
         </button>
 
         {/* Divider */}
@@ -849,6 +1202,7 @@ export default function MindMapPage() {
   const [view, setView] = useState<View>("list");
   const [maps, setMaps] = useState<LocalMindMap[]>(() => getMindMaps(userId));
   const [editingMap, setEditingMap] = useState<LocalMindMap | null>(null);
+  const [saveDeviceMap, setSaveDeviceMap] = useState<LocalMindMap | null>(null);
 
   // Create form
   const [newTitle, setNewTitle] = useState("");
@@ -943,6 +1297,14 @@ export default function MindMapPage() {
   // ─── List / Create view ───────────────────────────────────────────────────
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto pb-24">
+      {/* Save in Device modal */}
+      {saveDeviceMap && (
+        <SaveInDeviceModal
+          map={saveDeviceMap}
+          onClose={() => setSaveDeviceMap(null)}
+        />
+      )}
+
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -970,18 +1332,19 @@ export default function MindMapPage() {
               opens fullscreen. Tap any node to select it (yellow glow).
             </li>
             <li>
-              <span className="font-medium text-foreground">3.</span> Use the 4
+              <span className="font-medium text-foreground">3.</span> Use the 5
               buttons on the right: <strong>Add</strong>,{" "}
-              <strong>Delete</strong>, <strong>Colour</strong>,{" "}
-              <strong>Save</strong>.
+              <strong>Rename</strong>, <strong>Delete</strong>,{" "}
+              <strong>Colour</strong>, <strong>Save</strong>.
             </li>
             <li>
-              <span className="font-medium text-foreground">4.</span> Drag a
-              node to move it. Drag the background to pan the canvas.
+              <span className="font-medium text-foreground">4.</span> Nodes
+              auto-expand to fit any length of text — no truncation.
             </li>
             <li>
-              <span className="font-medium text-foreground">5.</span> Tap{" "}
-              <strong>Save</strong> to save and return to the list.
+              <span className="font-medium text-foreground">5.</span> After
+              saving, tap <strong>Save in Device</strong> to export as an image
+              in A4, A3, HD, or other sizes.
             </li>
           </ul>
         </CardContent>
@@ -1027,7 +1390,7 @@ export default function MindMapPage() {
                     data-ocid={`mindmap.map.item.${i + 1}`}
                   >
                     <CardContent className="p-4">
-                      <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start justify-between gap-2 flex-wrap">
                         <button
                           type="button"
                           className="flex-1 min-w-0 text-left"
@@ -1059,7 +1422,7 @@ export default function MindMapPage() {
                             {new Date(m.updatedAt).toLocaleDateString()}
                           </p>
                         </button>
-                        <div className="flex gap-1 items-center">
+                        <div className="flex gap-1 items-center flex-wrap justify-end">
                           <Button
                             variant="outline"
                             size="sm"
@@ -1079,6 +1442,16 @@ export default function MindMapPage() {
                           >
                             <Eye className="w-3 h-3" />
                             View
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="gap-1 text-xs px-2 h-8"
+                            onClick={() => setSaveDeviceMap(m)}
+                            data-ocid={`mindmap.map.save_device_button.${i + 1}`}
+                          >
+                            <Download className="w-3 h-3" />
+                            Save in Device
                           </Button>
                           <Button
                             variant="ghost"

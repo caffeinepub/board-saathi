@@ -42,7 +42,8 @@ import {
   updateUserPassword,
   validateCredentials,
 } from "../utils/localStorageService";
-import { pullAllData } from "../utils/syncService";
+import { getUserDataKey } from "../utils/localStorageService";
+import { SYNC_DATA_TYPES, pullAllData } from "../utils/syncService";
 
 type Mode = "login" | "register";
 
@@ -107,15 +108,14 @@ export default function LoginPage() {
         // Use username as stable userId so data is consistent across devices
         const stableUserId = `user_${localAccount.username}`;
         setCurrentUserId(stableUserId);
-        initializeUserData(stableUserId);
-        // Pull latest data from canister (non-blocking, best-effort)
+        // Pull latest data from canister (non-blocking, best-effort) before initializing
         if (actor) {
-          toast.info("Syncing your data...", { duration: 2000 });
           const syncTimeout = new Promise<void>((resolve) =>
-            setTimeout(resolve, 5000),
+            setTimeout(resolve, 8000),
           );
           await Promise.race([pullAllData(username, actor), syncTimeout]);
         }
+        initializeUserData(stableUserId);
         toast.success(`Welcome back, ${localAccount.name}!`);
         navigate({ to: "/" });
         return;
@@ -144,15 +144,19 @@ export default function LoginPage() {
             saveUserAccount(account);
             const stableUserId = `user_${username}`;
             setCurrentUserId(stableUserId);
-            initializeUserData(stableUserId);
-            // Pull all user data from canister
-            toast.info("Syncing your data...", { duration: 2000 });
+            // Pull all user data from canister BEFORE initializeUserData
+            // so we don't overwrite canister data with empty defaults
+            toast.info("Syncing your profile from server...", {
+              duration: 4000,
+            });
             const syncTimeout = new Promise<void>((resolve) =>
-              setTimeout(resolve, 5000),
+              setTimeout(resolve, 10000),
             );
             await Promise.race([pullAllData(username, actor), syncTimeout]);
+            // Only initialize if no data came down from canister
+            initializeUserData(stableUserId);
             toast.success(
-              `Welcome back, ${backendStudent.name}! Profile synced from server.`,
+              `Welcome back, ${backendStudent.name}! Profile synced.`,
             );
             navigate({ to: "/" });
             return;
@@ -235,10 +239,11 @@ export default function LoginPage() {
 
       // Save locally regardless (for offline use)
       // Use username-based stable userId so data is consistent across devices
-      const stableUserId = `user_${regUsername.trim()}`;
+      const username = regUsername.trim();
+      const stableUserId = `user_${username}`;
       const account: StoredUserAccount = {
         userId: stableUserId,
-        username: regUsername.trim(),
+        username,
         passwordHash: hashedPassword,
         name: regName.trim(),
         school: regSchool.trim(),
@@ -248,6 +253,22 @@ export default function LoginPage() {
       saveUserAccount(account);
       setCurrentUserId(stableUserId);
       initializeUserData(stableUserId);
+
+      // Immediately push all initialized data to canister so it's available on other devices
+      if (actor) {
+        try {
+          for (const dataType of SYNC_DATA_TYPES) {
+            const key = getUserDataKey(stableUserId, dataType);
+            const raw = localStorage.getItem(key);
+            if (raw && raw !== "[]" && raw !== "{}") {
+              await actor.saveUserData(username, dataType, raw);
+            }
+          }
+        } catch {
+          // Non-fatal — data will sync later via flush queue
+        }
+      }
+
       toast.success(`Account created! Welcome, ${regName}!`);
       navigate({ to: "/" });
     } finally {
@@ -525,12 +546,19 @@ export default function LoginPage() {
         <div className="text-center mb-8">
           <div className="flex justify-center mb-4">
             <img
-              src="/assets/generated/board-saathi-logo.dim_256x256.png"
+              src="/assets/generated/dev-winner-icon.dim_512x512.png"
               alt="Board Saathi"
               className="w-20 h-20 rounded-2xl shadow-lg object-contain"
               onError={(e) => {
                 const target = e.currentTarget;
-                target.src = "/assets/generated/app-icon-192.dim_192x192.png";
+                // Try 192 fallback, then hide if that also fails
+                if (!target.dataset.fallback) {
+                  target.dataset.fallback = "1";
+                  target.src =
+                    "/assets/generated/dev-winner-icon-192.dim_192x192.png";
+                } else {
+                  target.style.display = "none";
+                }
               }}
             />
           </div>

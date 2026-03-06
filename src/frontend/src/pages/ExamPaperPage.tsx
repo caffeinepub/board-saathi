@@ -14,10 +14,11 @@ import {
 import {
   ChevronDown,
   ChevronUp,
+  Download,
   FileText,
-  Printer,
+  Loader2,
+  Plus,
   Trash2,
-  X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -33,12 +34,19 @@ import {
   saveExamPapers,
 } from "../utils/localStorageService";
 
+// ── Local types ───────────────────────────────────────────────────────────────
+interface ExamSection {
+  id: string;
+  name: string;
+  marksPerQuestion: number;
+}
+
 type Step = 1 | 2 | 3;
 
 const GUIDE_STEPS = [
-  "Step 1 — Configure your paper: give it a title, pick subjects/chapters, set marks per question and time limit.",
-  "Step 2 — Select questions from your question bank. Use filters to narrow down by subject and chapter.",
-  "Step 3 — Preview the generated paper. Use the Print button to print or save as PDF.",
+  "Step 1 — Give your paper a title, pick subjects/chapters, set the time limit, then add sections (Section A, B, C...) with custom names and marks per question for each section.",
+  "Step 2 — Select questions from your question bank and assign each question to a section using the section picker.",
+  "Step 3 — Preview the generated paper in A4 format with section-wise grouping. Tap 'Save as PDF' to directly download the full A4 PDF to your device — no print dialog required.",
   "Saved papers appear at the top of the page. You can delete old papers anytime.",
 ];
 
@@ -60,19 +68,26 @@ export default function ExamPaperPage() {
   const [title, setTitle] = useState("Practice Paper");
   const [selectedSubjectIds, setSelectedSubjectIds] = useState<number[]>([]);
   const [selectedChapterIds, setSelectedChapterIds] = useState<number[]>([]);
-  const [marksPerQuestion, setMarksPerQuestion] = useState(2);
   const [timeLimit, setTimeLimit] = useState(60);
+  const [sections, setSections] = useState<ExamSection[]>([
+    { id: "sec_1", name: "Section A", marksPerQuestion: 2 },
+  ]);
 
   // ── Step 2 state
   const [filterSubjectId, setFilterSubjectId] = useState<number | "all">("all");
   const [filterChapterId, setFilterChapterId] = useState<number | "all">("all");
   const [selectedQIds, setSelectedQIds] = useState<Set<number>>(new Set());
   const [allQuestions, setAllQuestions] = useState<LocalQuestion[]>([]);
+  // Maps question id → section id
+  const [questionSectionMap, setQuestionSectionMap] = useState<
+    Record<number, string>
+  >({});
 
   // ── Step 3 state
   const [generatedPaper, setGeneratedPaper] = useState<LocalExamPaper | null>(
     null,
   );
+  const [generatedSections, setGeneratedSections] = useState<ExamSection[]>([]);
   const [viewPaper, setViewPaper] = useState<LocalExamPaper | null>(null);
   const printRef = useRef<HTMLDivElement>(null);
 
@@ -84,6 +99,22 @@ export default function ExamPaperPage() {
     const qs = getQuestions(userId);
     setAllQuestions(qs);
   }, [userId]);
+
+  // When sections change, update questionSectionMap defaults so unset questions point to sections[0]
+  useEffect(() => {
+    if (sections.length === 0) return;
+    setQuestionSectionMap((prev) => {
+      const next = { ...prev };
+      // Remove references to deleted sections
+      const validIds = new Set(sections.map((s) => s.id));
+      for (const [qid, sid] of Object.entries(next)) {
+        if (!validIds.has(sid)) {
+          next[Number(qid)] = sections[0].id;
+        }
+      }
+      return next;
+    });
+  }, [sections]);
 
   // Filtered questions for step 2
   const filteredQuestions = allQuestions.filter((q) => {
@@ -104,7 +135,6 @@ export default function ExamPaperPage() {
     setSelectedSubjectIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
-    // Also clear chapter filter for removed subjects
     setSelectedChapterIds((prev) => {
       const chaptersForSubject = chapters
         .filter((c) => c.subjectId === id)
@@ -126,6 +156,39 @@ export default function ExamPaperPage() {
       else next.add(id);
       return next;
     });
+    // Default section assignment
+    setQuestionSectionMap((prev) => {
+      if (prev[id]) return prev;
+      return { ...prev, [id]: sections[0]?.id ?? "sec_1" };
+    });
+  };
+
+  // ── Section management ────────────────────────────────────────────────────
+  const addSection = () => {
+    const newId = `sec_${Date.now()}`;
+    const letter = String.fromCharCode(65 + sections.length); // A=65
+    setSections((prev) => [
+      ...prev,
+      { id: newId, name: `Section ${letter}`, marksPerQuestion: 1 },
+    ]);
+  };
+
+  const updateSection = (
+    id: string,
+    field: keyof ExamSection,
+    value: string | number,
+  ) => {
+    setSections((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, [field]: value } : s)),
+    );
+  };
+
+  const removeSection = (id: string) => {
+    if (sections.length <= 1) {
+      toast.error("At least one section is required.");
+      return;
+    }
+    setSections((prev) => prev.filter((s) => s.id !== id));
   };
 
   const chaptersForSelectedSubjects =
@@ -145,6 +208,10 @@ export default function ExamPaperPage() {
       toast.error("Please enter a paper title.");
       return;
     }
+    if (sections.some((s) => !s.name.trim())) {
+      toast.error("Please give every section a name.");
+      return;
+    }
     setStep(2);
   };
 
@@ -154,43 +221,59 @@ export default function ExamPaperPage() {
       return;
     }
 
-    const questions: LocalExamPaperQuestion[] = Array.from(selectedQIds)
-      .map((qid) => allQuestions.find((q) => q.id === qid))
-      .filter(Boolean)
-      .map(
-        (q) =>
-          ({
+    const questions: (LocalExamPaperQuestion & { sectionId?: string })[] =
+      Array.from(selectedQIds)
+        .map((qid) => allQuestions.find((q) => q.id === qid))
+        .filter(Boolean)
+        .map((q) => {
+          const sectionId =
+            questionSectionMap[q!.id] ?? sections[0]?.id ?? "sec_1";
+          const section = sections.find((s) => s.id === sectionId);
+          const marks = section?.marksPerQuestion ?? 2;
+          return {
             questionId: q!.id,
             questionText: q!.questionText,
             answer: q!.answer,
             chapterId: q!.chapterId,
             subjectId: q!.subjectId,
-            marks: marksPerQuestion,
-          }) as LocalExamPaperQuestion,
-      );
+            marks,
+            sectionId,
+          } as LocalExamPaperQuestion & { sectionId?: string };
+        });
 
-    const paper: LocalExamPaper = {
+    // Compute total marks across sections
+    const totalMarks = sections.reduce((sum, sec) => {
+      const count = questions.filter(
+        (q) => (q as { sectionId?: string }).sectionId === sec.id,
+      ).length;
+      return sum + count * sec.marksPerQuestion;
+    }, 0);
+
+    // Use first section's marksPerQuestion as fallback for the LocalExamPaper type
+    const paper = {
       id: `ep_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       title: title.trim(),
       subjectIds: selectedSubjectIds,
       chapterIds: selectedChapterIds,
-      questions,
-      marksPerQuestion,
-      totalMarks: questions.length * marksPerQuestion,
+      questions: questions as LocalExamPaperQuestion[],
+      marksPerQuestion: sections[0]?.marksPerQuestion ?? 2,
+      totalMarks,
       timeLimit,
       createdAt: Date.now(),
-    };
+    } as LocalExamPaper;
 
     const updated = [paper, ...papers];
     setPapers(updated);
     saveExamPapers(userId, updated);
     setGeneratedPaper(paper);
+    setGeneratedSections([...sections]);
     setStep(3);
     toast.success("Exam paper generated!");
   }, [
     selectedQIds,
     allQuestions,
-    marksPerQuestion,
+    questionSectionMap,
+    sections,
     title,
     selectedSubjectIds,
     selectedChapterIds,
@@ -213,17 +296,119 @@ export default function ExamPaperPage() {
     setTitle("Practice Paper");
     setSelectedSubjectIds([]);
     setSelectedChapterIds([]);
-    setMarksPerQuestion(2);
+    setSections([{ id: "sec_1", name: "Section A", marksPerQuestion: 2 }]);
     setTimeLimit(60);
     setSelectedQIds(new Set());
+    setQuestionSectionMap({});
     setGeneratedPaper(null);
+    setGeneratedSections([]);
+    setViewPaper(null);
   };
 
-  const handlePrint = () => {
-    window.print();
-  };
+  const [savingPdf, setSavingPdf] = useState(false);
+
+  const handleSaveAsPdf = useCallback(() => {
+    if (!printRef.current) return;
+    setSavingPdf(true);
+
+    const currentPaper = viewPaper ?? generatedPaper;
+    const safeTitle = (currentPaper?.title ?? "Exam Paper")
+      .replace(/[^a-zA-Z0-9 _-]/g, "")
+      .trim();
+
+    // Inject print styles dynamically
+    const styleId = "exam-print-style";
+    let style = document.getElementById(styleId) as HTMLStyleElement | null;
+    if (!style) {
+      style = document.createElement("style");
+      style.id = styleId;
+      document.head.appendChild(style);
+    }
+    style.textContent = `
+      @media print {
+        body > * { display: none !important; }
+        #exam-print-area { display: block !important; position: static !important; }
+        #exam-print-area * { visibility: visible !important; }
+        @page {
+          size: A4 portrait;
+          margin: 15mm 15mm 15mm 15mm;
+        }
+        .print-section-wrapper { page-break-inside: avoid; }
+        .print-question-block { page-break-inside: avoid; margin-bottom: 18px; }
+      }
+    `;
+
+    // Move print content to a top-level div for printing
+    const printDiv = document.createElement("div");
+    printDiv.id = "exam-print-area";
+    printDiv.style.display = "none";
+    printDiv.innerHTML = printRef.current.outerHTML;
+    document.body.appendChild(printDiv);
+
+    // Set document title to paper title for PDF filename
+    const prevTitle = document.title;
+    document.title = safeTitle;
+
+    const cleanup = () => {
+      document.title = prevTitle;
+      printDiv.remove();
+      style!.textContent = "";
+      setSavingPdf(false);
+    };
+
+    // afterprint fires when print dialog closes
+    const onAfterPrint = () => {
+      cleanup();
+      window.removeEventListener("afterprint", onAfterPrint);
+    };
+    window.addEventListener("afterprint", onAfterPrint);
+
+    // Fallback cleanup after 60s in case afterprint never fires
+    const fallback = setTimeout(() => {
+      cleanup();
+      window.removeEventListener("afterprint", onAfterPrint);
+    }, 60000);
+
+    setTimeout(() => {
+      window.print();
+      clearTimeout(fallback);
+    }, 100);
+  }, [viewPaper, generatedPaper]);
 
   const paperToView = viewPaper ?? generatedPaper;
+
+  // For preview: determine sections to use
+  // If viewing a saved paper (not just generated), use generatedSections or fall back to single-section
+  const sectionsForPreview: ExamSection[] =
+    generatedSections.length > 0
+      ? generatedSections
+      : [
+          {
+            id: "sec_fallback",
+            name: "Questions",
+            marksPerQuestion: paperToView?.marksPerQuestion ?? 2,
+          },
+        ];
+
+  // Group questions by sectionId for preview
+  const questionsBySectionId: Record<
+    string,
+    (LocalExamPaperQuestion & { sectionId?: string })[]
+  > = {};
+  if (paperToView) {
+    for (const sec of sectionsForPreview) {
+      questionsBySectionId[sec.id] = [];
+    }
+    for (const q of paperToView.questions as (LocalExamPaperQuestion & {
+      sectionId?: string;
+    })[]) {
+      const sid = q.sectionId ?? sectionsForPreview[0]?.id ?? "sec_fallback";
+      if (!questionsBySectionId[sid]) {
+        questionsBySectionId[sid] = [];
+      }
+      questionsBySectionId[sid].push(q);
+    }
+  }
 
   return (
     <div className="p-4 md:p-6 max-w-4xl mx-auto">
@@ -235,7 +420,7 @@ export default function ExamPaperPage() {
             Exam Paper Generator
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Auto-generate full practice papers from your question bank
+            Auto-generate full practice papers with section-wise questions
           </p>
         </div>
         <Button
@@ -297,6 +482,7 @@ export default function ExamPaperPage() {
                       size="sm"
                       onClick={() => {
                         setViewPaper(p);
+                        setGeneratedSections([]);
                         setStep(3);
                       }}
                       data-ocid={`exam.paper.edit_button.${i + 1}`}
@@ -421,37 +607,99 @@ export default function ExamPaperPage() {
                 </div>
               )}
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label className="text-sm font-medium mb-1 block">
-                  Marks per Question
-                </Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={20}
-                  value={marksPerQuestion}
-                  onChange={(e) =>
-                    setMarksPerQuestion(Math.max(1, Number(e.target.value)))
-                  }
-                  data-ocid="exam.marks.input"
-                />
+            <div>
+              <Label className="text-sm font-medium mb-1 block">
+                Time Limit (minutes)
+              </Label>
+              <Input
+                type="number"
+                min={10}
+                max={300}
+                value={timeLimit}
+                onChange={(e) =>
+                  setTimeLimit(Math.max(10, Number(e.target.value)))
+                }
+                className="w-40"
+                data-ocid="exam.time.input"
+              />
+            </div>
+
+            {/* ── Sections Manager ─────────────────────────────────────── */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <Label className="text-sm font-semibold">Sections</Label>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={addSection}
+                  className="gap-1.5 h-8 text-xs"
+                  data-ocid="exam.add_section.button"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Add Section
+                </Button>
               </div>
-              <div>
-                <Label className="text-sm font-medium mb-1 block">
-                  Time Limit (minutes)
-                </Label>
-                <Input
-                  type="number"
-                  min={10}
-                  max={300}
-                  value={timeLimit}
-                  onChange={(e) =>
-                    setTimeLimit(Math.max(10, Number(e.target.value)))
-                  }
-                  data-ocid="exam.time.input"
-                />
+
+              <div
+                className="space-y-3 border border-border rounded-xl p-3 bg-muted/30"
+                data-ocid="exam.sections.list"
+              >
+                {sections.map((sec, idx) => (
+                  <div
+                    key={sec.id}
+                    className="flex items-center gap-2 flex-wrap"
+                  >
+                    <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                      <span className="text-xs text-muted-foreground w-5 font-bold flex-shrink-0">
+                        {idx + 1}.
+                      </span>
+                      <Input
+                        value={sec.name}
+                        onChange={(e) =>
+                          updateSection(sec.id, "name", e.target.value)
+                        }
+                        placeholder="Section name (e.g. Section A – MCQ)"
+                        className="h-8 text-xs flex-1 min-w-28"
+                        data-ocid="exam.section.name.input"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <Label className="text-xs text-muted-foreground whitespace-nowrap">
+                        Marks/Q
+                      </Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={20}
+                        value={sec.marksPerQuestion}
+                        onChange={(e) =>
+                          updateSection(
+                            sec.id,
+                            "marksPerQuestion",
+                            Math.max(1, Number(e.target.value)),
+                          )
+                        }
+                        className="h-8 w-16 text-xs"
+                        data-ocid="exam.section.marks.input"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeSection(sec.id)}
+                        disabled={sections.length <= 1}
+                        className="p-1.5 rounded-lg text-destructive hover:bg-destructive/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        title="Remove section"
+                        data-ocid="exam.remove_section.button"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
+
+              <p className="text-xs text-muted-foreground mt-2">
+                Each section can have a different marks-per-question value.
+              </p>
             </div>
 
             <Button
@@ -470,7 +718,7 @@ export default function ExamPaperPage() {
         <Card data-ocid="exam.questions.card">
           <CardHeader>
             <CardTitle className="text-base flex items-center justify-between">
-              <span>Step 2: Select Questions</span>
+              <span>Step 2: Select Questions & Assign Sections</span>
               <Badge variant="secondary">{selectedQIds.size} selected</Badge>
             </CardTitle>
           </CardHeader>
@@ -540,6 +788,14 @@ export default function ExamPaperPage() {
                     for (const id of ids) next.add(id);
                     return next;
                   });
+                  // Assign defaults
+                  setQuestionSectionMap((prev) => {
+                    const next = { ...prev };
+                    for (const id of ids) {
+                      if (!next[id]) next[id] = sections[0]?.id ?? "sec_1";
+                    }
+                    return next;
+                  });
                 }}
                 data-ocid="exam.select_all.button"
               >
@@ -553,6 +809,15 @@ export default function ExamPaperPage() {
               >
                 Clear
               </Button>
+            </div>
+
+            {/* Section legend */}
+            <div className="flex flex-wrap gap-2">
+              {sections.map((sec) => (
+                <Badge key={sec.id} variant="outline" className="text-xs gap-1">
+                  {sec.name} — {sec.marksPerQuestion} mk/q
+                </Badge>
+              ))}
             </div>
 
             {filteredQuestions.length === 0 ? (
@@ -570,48 +835,85 @@ export default function ExamPaperPage() {
                 {filteredQuestions.map((q, i) => {
                   const chap = chapters.find((c) => c.id === q.chapterId);
                   const subj = subjects.find((s) => s.id === q.subjectId);
+                  const sectionId =
+                    questionSectionMap[q.id] ?? sections[0]?.id ?? "sec_1";
                   return (
-                    <button
+                    <div
                       key={q.id}
-                      type="button"
-                      className={`w-full text-left flex items-start gap-3 p-3 rounded-lg border transition-colors cursor-pointer ${
+                      className={`flex items-start gap-3 p-3 rounded-lg border transition-colors ${
                         selectedQIds.has(q.id)
                           ? "border-primary/50 bg-primary/5"
                           : "border-border hover:border-border/80 hover:bg-muted/30"
                       }`}
-                      onClick={() => toggleQuestion(q.id)}
                       data-ocid={`exam.question.item.${i + 1}`}
                     >
-                      <Checkbox
-                        checked={selectedQIds.has(q.id)}
-                        onCheckedChange={() => toggleQuestion(q.id)}
-                        className="mt-0.5 pointer-events-none"
-                        data-ocid={`exam.question.checkbox.${i + 1}`}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium leading-snug">
-                          {q.questionText}
-                        </p>
-                        <div className="flex gap-1.5 mt-1 flex-wrap">
-                          {subj && (
-                            <Badge
-                              variant="outline"
-                              className="text-[10px] px-1.5 py-0"
-                            >
-                              {subj.name}
-                            </Badge>
-                          )}
-                          {chap && (
-                            <Badge
-                              variant="secondary"
-                              className="text-[10px] px-1.5 py-0"
-                            >
-                              {chap.name}
-                            </Badge>
-                          )}
+                      <button
+                        type="button"
+                        className="flex items-start gap-3 flex-1 min-w-0 text-left"
+                        onClick={() => toggleQuestion(q.id)}
+                      >
+                        <Checkbox
+                          checked={selectedQIds.has(q.id)}
+                          onCheckedChange={() => toggleQuestion(q.id)}
+                          className="mt-0.5 pointer-events-none"
+                          data-ocid={`exam.question.checkbox.${i + 1}`}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium leading-snug">
+                            {q.questionText}
+                          </p>
+                          <div className="flex gap-1.5 mt-1 flex-wrap">
+                            {subj && (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] px-1.5 py-0"
+                              >
+                                {subj.name}
+                              </Badge>
+                            )}
+                            {chap && (
+                              <Badge
+                                variant="secondary"
+                                className="text-[10px] px-1.5 py-0"
+                              >
+                                {chap.name}
+                              </Badge>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </button>
+                      </button>
+
+                      {/* Section picker (only when question is selected) */}
+                      {selectedQIds.has(q.id) && sections.length > 1 && (
+                        <Select
+                          value={sectionId}
+                          onValueChange={(v) =>
+                            setQuestionSectionMap((prev) => ({
+                              ...prev,
+                              [q.id]: v,
+                            }))
+                          }
+                        >
+                          <SelectTrigger
+                            className="w-36 h-7 text-xs flex-shrink-0"
+                            data-ocid="exam.question.section.select"
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {sections.map((sec) => (
+                              <SelectItem
+                                key={sec.id}
+                                value={sec.id}
+                                className="text-xs"
+                              >
+                                {sec.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
                   );
                 })}
               </div>
@@ -654,12 +956,17 @@ export default function ExamPaperPage() {
               ← Back
             </Button>
             <Button
-              onClick={handlePrint}
+              onClick={handleSaveAsPdf}
+              disabled={savingPdf}
               className="flex items-center gap-2"
-              data-ocid="exam.print.button"
+              data-ocid="exam.save_device.button"
             >
-              <Printer className="w-4 h-4" />
-              Print / Save as PDF
+              {savingPdf ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+              {savingPdf ? "Generating PDF..." : "Save as PDF"}
             </Button>
             <Button
               variant="outline"
@@ -669,6 +976,11 @@ export default function ExamPaperPage() {
               + Create New Paper
             </Button>
           </div>
+
+          <p className="text-xs text-muted-foreground mb-3">
+            Tap "Save as PDF" to directly download the full multi-page A4 PDF —
+            no print dialog needed.
+          </p>
 
           {/* Print Area */}
           <div
@@ -684,7 +996,7 @@ export default function ExamPaperPage() {
               <p className="text-sm text-gray-600 mt-1">
                 Board Saathi — CBSE Class 10 Practice Paper
               </p>
-              <div className="flex justify-center gap-8 mt-3 text-sm text-gray-700">
+              <div className="flex justify-center gap-6 mt-3 text-sm text-gray-700 flex-wrap">
                 <span>
                   <strong>Date:</strong>{" "}
                   {new Date(paperToView.createdAt).toLocaleDateString("en-IN")}
@@ -695,50 +1007,108 @@ export default function ExamPaperPage() {
                 <span>
                   <strong>Time:</strong> {paperToView.timeLimit} minutes
                 </span>
+                <span>
+                  <strong>Sections:</strong> {sectionsForPreview.length}
+                </span>
               </div>
             </div>
 
             {/* Instructions */}
             <div className="bg-gray-50 border border-gray-200 rounded p-3 mb-6 text-xs text-gray-600">
               <strong>General Instructions:</strong> All questions are
-              compulsory. Each question carries {paperToView.marksPerQuestion}{" "}
-              marks. Read each question carefully before answering.
+              compulsory. Marks for each question are indicated in brackets.
+              Read each question carefully before answering.
             </div>
 
-            {/* Questions */}
-            <div className="space-y-6">
-              {paperToView.questions.map((q, i) => (
+            {/* Section-wise questions */}
+            {sectionsForPreview.map((sec) => {
+              const secQuestions =
+                questionsBySectionId[sec.id] ??
+                (
+                  paperToView.questions as (LocalExamPaperQuestion & {
+                    sectionId?: string;
+                  })[]
+                ).filter(
+                  (q) => (q.sectionId ?? sectionsForPreview[0]?.id) === sec.id,
+                );
+
+              if (secQuestions.length === 0) return null;
+
+              const secTotal = secQuestions.length * sec.marksPerQuestion;
+
+              // Global question number offset
+              let globalOffset = 0;
+              for (const prevSec of sectionsForPreview) {
+                if (prevSec.id === sec.id) break;
+                globalOffset += (questionsBySectionId[prevSec.id] ?? []).length;
+              }
+
+              return (
                 <div
-                  key={q.questionId}
-                  data-ocid={`exam.preview.question.item.${i + 1}`}
+                  key={sec.id}
+                  className="print-section-wrapper"
+                  style={{ marginBottom: "24px" }}
                 >
-                  <div className="flex items-start gap-3">
-                    <span className="font-bold text-gray-900 w-8 flex-shrink-0">
-                      {i + 1}.
-                    </span>
-                    <div className="flex-1">
-                      <div className="flex justify-between gap-2">
-                        <p className="text-sm text-gray-900 font-medium leading-relaxed">
-                          {q.questionText}
-                        </p>
-                        <span className="text-xs text-gray-500 flex-shrink-0">
-                          [{q.marks} marks]
-                        </span>
-                      </div>
-                      {/* Answer lines */}
-                      <div className="mt-3 space-y-2">
-                        {(["l1", "l2", "l3", "l4"] as const).map((lk) => (
-                          <div
-                            key={lk}
-                            className="border-b border-gray-300 h-6"
-                          />
-                        ))}
-                      </div>
+                  {/* Section header */}
+                  <div
+                    className="print-section-header"
+                    style={{
+                      backgroundColor: "#f3f4f6",
+                      borderBottom: "2px solid #374151",
+                      padding: "8px 12px",
+                      marginBottom: "16px",
+                    }}
+                  >
+                    <div className="flex justify-between items-center flex-wrap gap-2">
+                      <span className="font-bold text-gray-900 text-sm">
+                        {sec.name}
+                      </span>
+                      <span className="text-xs text-gray-600">
+                        Total Marks: {secTotal} &nbsp;|&nbsp;{" "}
+                        {sec.marksPerQuestion} mark
+                        {sec.marksPerQuestion !== 1 ? "s" : ""} each
+                      </span>
                     </div>
                   </div>
+
+                  {/* Questions in this section */}
+                  <div className="space-y-6">
+                    {secQuestions.map((q, qi) => (
+                      <div
+                        key={q.questionId}
+                        className="print-question-block"
+                        data-ocid={`exam.preview.question.item.${globalOffset + qi + 1}`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <span className="font-bold text-gray-900 w-8 flex-shrink-0">
+                            {globalOffset + qi + 1}.
+                          </span>
+                          <div className="flex-1">
+                            <div className="flex justify-between gap-2">
+                              <p className="text-sm text-gray-900 font-medium leading-relaxed">
+                                {q.questionText}
+                              </p>
+                              <span className="text-xs text-gray-500 flex-shrink-0">
+                                [{q.marks} mark{q.marks !== 1 ? "s" : ""}]
+                              </span>
+                            </div>
+                            {/* Answer lines */}
+                            <div className="mt-3 space-y-2">
+                              {(["l1", "l2", "l3", "l4"] as const).map((lk) => (
+                                <div
+                                  key={lk}
+                                  className="border-b border-gray-300 h-6"
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              ))}
-            </div>
+              );
+            })}
 
             {/* Footer */}
             <div className="border-t-2 border-gray-300 mt-8 pt-4 text-center text-xs text-gray-400">
@@ -763,21 +1133,6 @@ export default function ExamPaperPage() {
           </Button>
         </div>
       )}
-
-      {/* Print styles injected inline so they work without a separate CSS file */}
-      <style>{`
-        @media print {
-          body > *:not(#root) { display: none !important; }
-          #root > * { display: none !important; }
-          [data-ocid="exam.preview.card"] {
-            display: block !important;
-            position: fixed;
-            top: 0; left: 0;
-            width: 100%;
-            z-index: 9999;
-          }
-        }
-      `}</style>
     </div>
   );
 }

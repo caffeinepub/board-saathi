@@ -874,7 +874,8 @@ export default function ParentDashboard() {
 
   const handleLogout = () => {
     clearParentSession();
-    navigate({ to: "/login" });
+    // Full page reload ensures router re-evaluates auth state from scratch
+    window.location.href = "/login";
   };
 
   if (loading) {

@@ -18,6 +18,8 @@ import {
 } from "lucide-react";
 import React, { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
+import { ExternalBlob } from "../backend";
+import { compressImage } from "../utils/imageCompression";
 import {
   type LocalHandwritingAnalysis,
   getCurrentUserId,
@@ -25,13 +27,59 @@ import {
   saveHandwritingAnalyses,
 } from "../utils/localStorageService";
 
-// ─── Analysis Engine ─────────────────────────────────────────────────────────
+// ─── Accurate Handwriting Analysis Engine ────────────────────────────────────
+
+/** Compute Otsu's threshold for adaptive binarization */
+function otsuThreshold(gray: Uint8Array): number {
+  const hist = new Float64Array(256);
+  for (const v of gray) hist[v]++;
+  const total = gray.length;
+  let sumB = 0;
+  let wB = 0;
+  let maximum = 0;
+  let threshold = 128;
+  let sum1 = 0;
+  for (let i = 0; i < 256; i++) sum1 += i * hist[i];
+  for (let i = 0; i < 256; i++) {
+    wB += hist[i];
+    if (wB === 0) continue;
+    const wF = total - wB;
+    if (wF === 0) break;
+    sumB += i * hist[i];
+    const mB = sumB / wB;
+    const mF = (sum1 - sumB) / wF;
+    const between = wB * wF * (mB - mF) * (mB - mF);
+    if (between > maximum) {
+      maximum = between;
+      threshold = i;
+    }
+  }
+  return threshold;
+}
+
+/** Normalize contrast: stretch histogram to [0, 255] */
+function normalizeContrast(gray: Uint8Array): Uint8Array {
+  let min = 255;
+  let max = 0;
+  for (const v of gray) {
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  if (max === min) return gray;
+  const range = max - min;
+  const normalized = new Uint8Array(gray.length);
+  for (let i = 0; i < gray.length; i++) {
+    normalized[i] = Math.round(((gray[i] - min) / range) * 255);
+  }
+  return normalized;
+}
 
 function analyzeHandwriting(
   imageElement: HTMLImageElement,
 ): Omit<LocalHandwritingAnalysis, "id" | "imageData" | "analyzedAt"> {
   const canvas = document.createElement("canvas");
-  const MAX_SIZE = 600;
+  // Use higher resolution for better accuracy
+  const MAX_SIZE = 800;
   const scale = Math.min(
     MAX_SIZE / imageElement.width,
     MAX_SIZE / imageElement.height,
@@ -39,146 +87,183 @@ function analyzeHandwriting(
   );
   canvas.width = Math.round(imageElement.width * scale);
   canvas.height = Math.round(imageElement.height * scale);
-  const ctx = canvas.getContext("2d")!;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
   ctx.drawImage(imageElement, 0, 0, canvas.width, canvas.height);
 
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const { data, width, height } = imageData;
 
-  // Convert to grayscale
-  const gray = new Uint8Array(width * height);
+  // Step 1: Convert to grayscale (perceptual luminance)
+  const rawGray = new Uint8Array(width * height);
   for (let i = 0; i < width * height; i++) {
-    const r = data[i * 4];
-    const g = data[i * 4 + 1];
-    const b = data[i * 4 + 2];
-    gray[i] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+    rawGray[i] = Math.round(
+      0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2],
+    );
   }
 
-  // Helper: is pixel "dark" (i.e., ink)?
-  const THRESHOLD = 128;
-  const isDark = (x: number, y: number) =>
+  // Step 2: Normalize contrast to handle dim/overexposed photos
+  const gray = normalizeContrast(rawGray);
+
+  // Step 3: Compute adaptive Otsu threshold
+  const THRESHOLD = otsuThreshold(gray);
+
+  const isDark = (x: number, y: number): boolean =>
     x >= 0 && x < width && y >= 0 && y < height
       ? gray[y * width + x] < THRESHOLD
       : false;
 
-  // ── 1. Neatness (edge density) ───────────────────────────────────────────
-  // Count high-contrast transitions between adjacent pixels
-  let edgeCount = 0;
+  // ── 1. NEATNESS: Laplacian edge sharpness ────────────────────────────────
+  // Sharp, clean strokes produce well-defined edges.
+  // Messy writing has many soft/blurry transitions.
+  let sharpEdges = 0;
+  let softEdges = 0;
   for (let y = 1; y < height - 1; y++) {
     for (let x = 1; x < width - 1; x++) {
-      const center = gray[y * width + x];
-      const right = gray[y * width + x + 1];
-      const bottom = gray[(y + 1) * width + x];
-      if (Math.abs(center - right) > 50 || Math.abs(center - bottom) > 50) {
-        edgeCount++;
-      }
+      const c = gray[y * width + x];
+      const l = gray[y * width + x - 1];
+      const r = gray[y * width + x + 1];
+      const t = gray[(y - 1) * width + x];
+      const b = gray[(y + 1) * width + x];
+      // Laplacian magnitude
+      const lap = Math.abs(4 * c - l - r - t - b);
+      if (lap > 80) sharpEdges++;
+      else if (lap > 20) softEdges++;
     }
   }
-  const totalPixels = width * height;
-  const edgeDensity = edgeCount / totalPixels;
-  // Good handwriting has ~3–10% edge density
-  const idealEdgeDensity = 0.07;
-  const neatnessFactor = Math.min(edgeDensity / idealEdgeDensity, 1.5);
-  // Penalize if too sparse (unreadable) or too dense (messy)
-  const neatnessRaw = neatnessFactor > 1 ? 2 - neatnessFactor : neatnessFactor;
-  const neatnessScore = Math.round(Math.max(0, Math.min(25, neatnessRaw * 25)));
+  const totalEdges = sharpEdges + softEdges || 1;
+  const sharpRatio = sharpEdges / totalEdges;
+  // Ideal sharpRatio 0.55–0.85 (very high = noisy, very low = blurry/messy)
+  const neatnessPct =
+    sharpRatio > 0.85
+      ? 1 - (sharpRatio - 0.85) * 4 // penalize noisy
+      : sharpRatio / 0.75;
+  const neatnessScore = Math.round(Math.max(5, Math.min(25, neatnessPct * 25)));
 
-  // ── 2. Letter Consistency (vertical strip variance) ───────────────────────
-  const STRIP_W = 8;
+  // ── 2. LETTER CONSISTENCY: Coefficient of variation in ink density per column ──
+  // Consistent letters → uniform ink distribution column to column.
+  const STRIP_W = 6;
   const numStrips = Math.floor(width / STRIP_W);
   const stripDensities: number[] = [];
   for (let s = 0; s < numStrips; s++) {
     let darkPx = 0;
+    const area = STRIP_W * height;
     for (let y = 0; y < height; y++) {
-      for (let x = s * STRIP_W; x < (s + 1) * STRIP_W && x < width; x++) {
+      for (let x = s * STRIP_W; x < Math.min((s + 1) * STRIP_W, width); x++) {
         if (isDark(x, y)) darkPx++;
       }
     }
-    stripDensities.push(darkPx / (STRIP_W * height));
+    stripDensities.push(darkPx / area);
   }
-  const mean =
-    stripDensities.reduce((a, b) => a + b, 0) / (stripDensities.length || 1);
-  const variance =
-    stripDensities.reduce((sum, v) => sum + (v - mean) ** 2, 0) /
-    (stripDensities.length || 1);
-  // Lower variance → more consistent letters
+  // Only include non-trivial strips (ignore pure-white margins)
+  const activeDensities = stripDensities.filter((d) => d > 0.02);
+  const densityMean =
+    activeDensities.reduce((a, b) => a + b, 0) / (activeDensities.length || 1);
+  const densityVar =
+    activeDensities.reduce((sum, v) => sum + (v - densityMean) ** 2, 0) /
+    (activeDensities.length || 1);
+  const densityCV = Math.sqrt(densityVar) / (densityMean || 0.01);
+  // Lower CV = more consistent. CV < 0.5 is good; CV > 1.5 is inconsistent.
+  const consistencyPct = Math.max(0, 1 - densityCV / 1.5);
   const consistencyScore = Math.round(
-    Math.max(0, Math.min(25, (1 - variance * 200) * 25)),
+    Math.max(4, Math.min(25, consistencyPct * 25)),
   );
 
-  // ── 3. Spacing (horizontal white-space bands) ─────────────────────────────
-  let whiteRowCount = 0;
-  let prevWasWhite = false;
-  let spaceTransitions = 0;
+  // ── 3. SPACING: Row-level white-space analysis ────────────────────────────
+  // Detect line rows vs. white-space rows. Good spacing has regular alternation.
+  const rowInkDensity: number[] = [];
   for (let y = 0; y < height; y++) {
-    let darkInRow = 0;
+    let dark = 0;
     for (let x = 0; x < width; x++) {
-      if (isDark(x, y)) darkInRow++;
+      if (isDark(x, y)) dark++;
     }
-    const rowDensity = darkInRow / width;
-    const isWhiteRow = rowDensity < 0.05;
-    if (isWhiteRow) whiteRowCount++;
-    if (isWhiteRow !== prevWasWhite) spaceTransitions++;
-    prevWasWhite = isWhiteRow;
+    rowInkDensity.push(dark / width);
   }
-  const whiteRatio = whiteRowCount / height;
-  // Good text has ~30–60% white rows (line spacing)
-  const spacingIdeal =
-    Math.abs(whiteRatio - 0.45) < 0.2
-      ? 1
-      : Math.max(0, 1 - Math.abs(whiteRatio - 0.45) * 3);
-  // Regular transitions (lines) add to score
-  const transitionScore = Math.min(1, spaceTransitions / 20);
-  const spacingScore = Math.round(
-    Math.max(
-      0,
-      Math.min(25, (spacingIdeal * 0.7 + transitionScore * 0.3) * 25),
-    ),
-  );
 
-  // ── 4. Alignment (baseline consistency) ───────────────────────────────────
-  // For each "word row" (band between white strips), measure how consistent
-  // the vertical center of dark pixels is.
-  const rowBands: { top: number; bottom: number }[] = [];
+  // Count line-rows (>4% ink) and space-rows (<2% ink)
+  const lineRows = rowInkDensity.filter((d) => d > 0.04).length;
+  const spaceRows = rowInkDensity.filter((d) => d < 0.02).length;
+  const totalRows = height;
+
+  // Count transitions between line-regions and space-regions (= num lines × 2)
+  let transitions = 0;
+  let prev = rowInkDensity[0] > 0.03;
+  for (let y = 1; y < height; y++) {
+    const cur = rowInkDensity[y] > 0.03;
+    if (cur !== prev) transitions++;
+    prev = cur;
+  }
+  const estimatedLines = Math.ceil(transitions / 2);
+
+  // Good spacing: ~25–50% of rows are ink, rest are gaps; at least 2 lines
+  const inkRatio = lineRows / totalRows;
+  const spaceRatio = spaceRows / totalRows;
+  const goodInkRatio =
+    inkRatio >= 0.15 && inkRatio <= 0.55
+      ? 1
+      : Math.max(0, 1 - Math.abs(inkRatio - 0.35) * 3);
+  const goodSpaceRatio = spaceRatio >= 0.2 ? 1 : spaceRatio / 0.2;
+  const linesBonus = estimatedLines >= 3 ? 1 : estimatedLines / 3;
+  const spacingPct =
+    goodInkRatio * 0.45 + goodSpaceRatio * 0.35 + linesBonus * 0.2;
+  const spacingScore = Math.round(Math.max(5, Math.min(25, spacingPct * 25)));
+
+  // ── 4. ALIGNMENT: Baseline straightness ──────────────────────────────────
+  // Detect text line bands and measure their vertical center consistency.
+  const rowBands: { top: number; bottom: number; center: number }[] = [];
   let inBand = false;
   let bandStart = 0;
   for (let y = 0; y < height; y++) {
-    let darkInRow = 0;
-    for (let x = 0; x < width; x++) {
-      if (isDark(x, y)) darkInRow++;
-    }
-    const isText = darkInRow / width >= 0.03;
+    const isText = rowInkDensity[y] > 0.04;
     if (isText && !inBand) {
       inBand = true;
       bandStart = y;
     } else if (!isText && inBand) {
       inBand = false;
-      if (y - bandStart > 3) {
-        rowBands.push({ top: bandStart, bottom: y });
+      const bandH = y - bandStart;
+      if (bandH > 4) {
+        rowBands.push({
+          top: bandStart,
+          bottom: y,
+          center: bandStart + bandH / 2,
+        });
       }
     }
   }
-  // Each band should be roughly similar in height
-  const bandHeights = rowBands.map((b) => b.bottom - b.top);
-  if (bandHeights.length >= 2) {
+
+  let alignmentScore: number;
+  if (rowBands.length >= 2) {
+    // Measure: (a) uniform band heights, (b) uniform gaps between bands
+    const bandHeights = rowBands.map((b) => b.bottom - b.top);
+    const gaps: number[] = [];
+    for (let i = 1; i < rowBands.length; i++) {
+      gaps.push(rowBands[i].top - rowBands[i - 1].bottom);
+    }
+
     const heightMean =
       bandHeights.reduce((a, b) => a + b, 0) / bandHeights.length;
-    const heightVar =
-      bandHeights.reduce((sum, h) => sum + (h - heightMean) ** 2, 0) /
-      bandHeights.length;
-    const cv = Math.sqrt(heightVar) / (heightMean || 1); // coefficient of variation
-    const alignmentScore = Math.round(
-      Math.max(0, Math.min(25, (1 - Math.min(cv, 1)) * 25)),
-    );
-    return computeResult(
-      neatnessScore,
-      consistencyScore,
-      spacingScore,
-      alignmentScore,
-    );
+    const heightCV =
+      Math.sqrt(
+        bandHeights.reduce((s, h) => s + (h - heightMean) ** 2, 0) /
+          bandHeights.length,
+      ) / (heightMean || 1);
+
+    let gapCV = 0;
+    if (gaps.length > 0) {
+      const gapMean = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+      gapCV =
+        Math.sqrt(
+          gaps.reduce((s, g) => s + (g - gapMean) ** 2, 0) / gaps.length,
+        ) / (gapMean || 1);
+    }
+
+    // Lower CV = more aligned
+    const alignmentPct = Math.max(0, 1 - (heightCV * 0.6 + gapCV * 0.4) / 1.2);
+    alignmentScore = Math.round(Math.max(5, Math.min(25, alignmentPct * 25)));
+  } else {
+    // Single line or unclear — moderate score
+    alignmentScore = Math.round(10 + (spacingScore / 25) * 8);
   }
-  // Fallback alignment score
-  const alignmentScore = Math.round(12 + Math.random() * 8);
+
   return computeResult(
     neatnessScore,
     consistencyScore,
@@ -203,29 +288,54 @@ function computeResult(
   else grade = "Needs Practice";
 
   const tips: string[] = [];
-  if (neatnessScore < 15)
+
+  if (neatnessScore < 13) {
     tips.push(
-      "Work on pen pressure — try writing slower with consistent pressure.",
+      "Pen strokes look blurry or overlapping — slow down and apply consistent, firm pressure.",
     );
-  else if (neatnessScore >= 20) tips.push("Great neatness! Keep it up.");
-
-  if (consistencyScore < 15)
+  } else if (neatnessScore < 18) {
     tips.push(
-      "Practice letter uniformity — write each letter the same height.",
+      "Neatness can improve — trace each letter deliberately without retracing strokes.",
     );
-  else if (consistencyScore >= 20) tips.push("Excellent letter consistency!");
+  } else {
+    tips.push("Excellent stroke clarity! Your pen control is strong.");
+  }
 
-  if (spacingScore < 15)
-    tips.push("Add more space between words — use finger-width gaps.");
-  else if (spacingScore >= 20) tips.push("Your word spacing is well-balanced.");
+  if (consistencyScore < 13) {
+    tips.push(
+      "Letter sizes vary a lot — practice on 4-line ruled paper to standardize letter height.",
+    );
+  } else if (consistencyScore < 18) {
+    tips.push(
+      "Letter consistency is moderate — focus on matching ascender heights (t, h, k, l).",
+    );
+  } else {
+    tips.push("Very consistent letter sizing — your hand is well trained.");
+  }
 
-  if (alignmentScore < 15)
-    tips.push("Practice on ruled paper to maintain a straight baseline.");
-  else if (alignmentScore >= 20)
-    tips.push("Your alignment is very consistent!");
+  if (spacingScore < 13) {
+    tips.push(
+      "Word spacing looks uneven — use the 'one finger gap' rule between words.",
+    );
+  } else if (spacingScore < 18) {
+    tips.push(
+      "Line spacing is slightly irregular — aim for even 1.5× line height gaps.",
+    );
+  } else {
+    tips.push("Well-balanced word and line spacing.");
+  }
 
-  if (tips.length === 0)
-    tips.push("Well done! Continue practicing daily for even better results.");
+  if (alignmentScore < 13) {
+    tips.push(
+      "Lines look slanted or wavy — practice with lined paper and train your eye to stay horizontal.",
+    );
+  } else if (alignmentScore < 18) {
+    tips.push(
+      "Alignment is decent but could be straighter — lightly rule blank paper with pencil to guide practice.",
+    );
+  } else {
+    tips.push("Very straight and consistent baseline alignment.");
+  }
 
   return {
     neatnessScore,
@@ -431,7 +541,9 @@ export default function HandwritingAnalyzerPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
-  const handleImageFile = useCallback((file: File) => {
+  const handleImageFile = useCallback(async (rawFile: File) => {
+    // Compress first — large camera photos become ~150 KB
+    const file = await compressImage(rawFile);
     const reader = new FileReader();
     reader.onload = (e) => {
       setImagePreview(e.target?.result as string);
@@ -469,7 +581,7 @@ export default function HandwritingAnalyzerPage() {
 
       const analysis = analyzeHandwriting(img);
 
-      // Create thumbnail (max 400px wide)
+      // Create thumbnail (max 400px wide) and upload to blob storage
       const thumbCanvas = document.createElement("canvas");
       const THUMB_MAX = 400;
       const scale = Math.min(THUMB_MAX / img.width, 1);
@@ -478,11 +590,19 @@ export default function HandwritingAnalyzerPage() {
       thumbCanvas
         .getContext("2d")!
         .drawImage(img, 0, 0, thumbCanvas.width, thumbCanvas.height);
-      const thumbData = thumbCanvas.toDataURL("image/jpeg", 0.7);
+
+      // Convert canvas to blob, upload to external blob storage, get permanent URL
+      const thumbBlob = await new Promise<Blob>((res) =>
+        thumbCanvas.toBlob((b) => res(b!), "image/jpeg", 0.7),
+      );
+      const thumbBytes = new Uint8Array(await thumbBlob.arrayBuffer());
+      const externalBlob = ExternalBlob.fromBytes(thumbBytes);
+      await externalBlob.getBytes(); // triggers upload
+      const thumbUrl = externalBlob.getDirectURL();
 
       const entry: LocalHandwritingAnalysis = {
         id: `hw_${Date.now()}`,
-        imageData: thumbData,
+        imageData: thumbUrl,
         ...analysis,
         analyzedAt: Date.now(),
       };

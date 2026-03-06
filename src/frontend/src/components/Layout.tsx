@@ -145,9 +145,11 @@ export default function Layout() {
 
   const handleLogout = () => {
     clearCurrentSession();
+    localStorage.removeItem("bs_parentSession");
     queryClient.clear();
     toast.success("Logged out successfully");
-    navigate({ to: "/login" });
+    // Full page reload to /login so the router re-evaluates auth state from scratch
+    window.location.href = "/login";
   };
 
   const userId = getCurrentUserId();
@@ -181,12 +183,12 @@ export default function Layout() {
         <div className="p-4 border-b border-border">
           <div className="flex items-center gap-2">
             <img
-              src="/assets/generated/favicon.dim_32x32.png"
+              src="/assets/generated/dev-winner-icon-192.dim_192x192.png"
               alt="Board Saathi"
               className="w-8 h-8 rounded-lg"
               onError={(e) => {
                 (e.currentTarget as HTMLImageElement).src =
-                  "/assets/generated/app-icon-192.dim_192x192.png";
+                  "/assets/generated/dev-winner-icon-192.dim_192x192.png";
               }}
             />
             <div>
@@ -280,12 +282,12 @@ export default function Layout() {
         <div className="p-4 border-b border-border flex items-center justify-between">
           <div className="flex items-center gap-2">
             <img
-              src="/assets/generated/favicon.dim_32x32.png"
+              src="/assets/generated/dev-winner-icon-192.dim_192x192.png"
               alt="Board Saathi"
               className="w-8 h-8 rounded-lg"
               onError={(e) => {
                 (e.currentTarget as HTMLImageElement).src =
-                  "/assets/generated/app-icon-192.dim_192x192.png";
+                  "/assets/generated/dev-winner-icon-192.dim_192x192.png";
               }}
             />
             <div>
@@ -372,12 +374,12 @@ export default function Layout() {
           <div className="flex items-center gap-1.5">
             {!guest && <SyncStatus />}
             <img
-              src="/assets/generated/favicon.dim_32x32.png"
+              src="/assets/generated/dev-winner-icon-192.dim_192x192.png"
               alt=""
               className="w-6 h-6 rounded"
               onError={(e) => {
                 (e.currentTarget as HTMLImageElement).src =
-                  "/assets/generated/app-icon-192.dim_192x192.png";
+                  "/assets/generated/dev-winner-icon-192.dim_192x192.png";
               }}
             />
             <span className="font-black text-sm">Board Saathi</span>

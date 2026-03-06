@@ -951,17 +951,8 @@ export interface TimerData {
   createdAt: number;
 }
 
-function getTimersKey(userId: string): string {
-  return `bs_${userId}_timers`;
-}
-
 export function getTimers(userId: string): TimerData[] {
-  try {
-    const raw = localStorage.getItem(getTimersKey(userId));
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
+  return getData<TimerData[]>(userId, "timers", []);
 }
 
 export function addTimer(
@@ -975,14 +966,14 @@ export function addTimer(
     createdAt: Date.now(),
   };
   timers.push(newTimer);
-  localStorage.setItem(getTimersKey(userId), JSON.stringify(timers));
+  setData(userId, "timers", timers);
   return newTimer;
 }
 
 export function deleteTimer(userId: string, timerId: string): void {
   const timers = getTimers(userId);
   const updated = timers.filter((t) => t.id !== timerId);
-  localStorage.setItem(getTimersKey(userId), JSON.stringify(updated));
+  setData(userId, "timers", updated);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

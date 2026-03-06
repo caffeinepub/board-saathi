@@ -1,6 +1,6 @@
 // ─── Board Saathi Service Worker ───────────────────────────────────────────
 // Bump this version string whenever you want to force a full cache refresh.
-const CACHE_VERSION = 'board-saathi-v7';
+const CACHE_VERSION = 'board-saathi-v9';
 const STATIC_CACHE  = `${CACHE_VERSION}-static`;
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`;
 
@@ -10,23 +10,9 @@ const PRECACHE_URLS = [
   '/index.html',
   '/offline.html',
   '/manifest.json',
-  // DEV-branded icons
-  '/assets/generated/favicon.dim_32x32.png',
-  '/assets/generated/app-icon-192.dim_192x192.png',
-  '/assets/generated/app-icon-512.dim_512x512.png',
-  '/assets/generated/app-icon-maskable.dim_512x512.png',
-  // Legacy icons (backward compat)
-  '/assets/generated/board-saathi-logo.dim_256x256.png',
-  '/assets/generated/board-saathi-icon.dim_512x512.png',
-  '/assets/generated/board-saathi-icon-192.dim_192x192.png',
-  '/assets/generated/board-saathi-apple-touch.dim_180x180.png',
-  '/assets/generated/app-icon.dim_512x512.png',
-  '/assets/generated/app-icon-maskable-512.dim_512x512.png',
-  '/assets/generated/icon-192.dim_192x192.png',
-  '/assets/generated/icon-512.dim_512x512.png',
-  '/assets/generated/icon-maskable.dim_512x512.png',
-  '/assets/generated/pwa-icon-192.dim_192x192.png',
-  '/assets/generated/pwa-icon-512.dim_512x512.png',
+  // DEV Winner icons
+  '/assets/generated/dev-winner-icon.dim_512x512.png',
+  '/assets/generated/dev-winner-icon-192.dim_192x192.png',
   '/assets/generated/login-hero.dim_600x400.png',
   // Alarm sounds
   '/assets/sounds/joshsound.mp3',
