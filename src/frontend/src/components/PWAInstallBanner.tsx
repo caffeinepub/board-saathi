@@ -15,6 +15,15 @@ export default function PWAInstallBanner() {
             src="/assets/generated/dev-winner-icon-192.dim_192x192.png"
             alt="Board Saathi"
             className="w-12 h-12 rounded-xl shadow-md"
+            onError={(e) => {
+              const el = e.currentTarget as HTMLImageElement;
+              if (!el.dataset.fallback) {
+                el.dataset.fallback = "1";
+                el.src = "/assets/generated/dev-winner-icon.dim_512x512.png";
+              } else {
+                el.style.display = "none";
+              }
+            }}
           />
         </div>
 

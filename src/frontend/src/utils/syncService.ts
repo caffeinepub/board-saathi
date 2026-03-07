@@ -12,7 +12,7 @@ import type { backendInterface } from "../backend";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type SyncStatus = "synced" | "pending" | "offline";
+export type SyncStatus = "synced" | "pending" | "pulling" | "offline";
 
 interface SyncQueueItem {
   username: string;
@@ -25,6 +25,22 @@ interface SyncQueueItem {
 
 const SYNC_QUEUE_KEY = "bs_sync_queue";
 const LAST_SYNC_KEY = "bs_last_sync";
+
+// ─── Pulling state (set during login data pull) ───────────────────────────────
+let _isPulling = false;
+
+export function setIsPulling(v: boolean): void {
+  _isPulling = v;
+  try {
+    window.dispatchEvent(new CustomEvent("bs:sync-status-changed"));
+  } catch {
+    // ignore
+  }
+}
+
+export function getIsPulling(): boolean {
+  return _isPulling;
+}
 
 // All user data types that should be synced to the canister
 export const SYNC_DATA_TYPES = [
@@ -85,21 +101,37 @@ function enqueue(item: SyncQueueItem): void {
 // ─── Username helpers ─────────────────────────────────────────────────────────
 
 /**
- * Strips the "user_" prefix from a userId to get the plain username for canister calls.
- * e.g. "user_devkumar" → "devkumar"
+ * Strips the userId prefix to get the plain identifier for canister calls.
+ *
+ * - "principal_<principalText>" → "<principalText>"  (Internet Identity)
+ * - "user_<username>"           → "<username>"         (legacy username/password)
+ * - anything else               → returned as-is
  */
 function toUsername(userId: string): string {
+  if (userId.startsWith("principal_")) {
+    return userId.slice(10); // strip "principal_" → plain Principal text
+  }
   if (userId.startsWith("user_")) {
-    return userId.slice(5);
+    return userId.slice(5); // strip "user_" → plain username
   }
   return userId;
 }
 
 /**
- * Returns the localStorage key that getUserDataKey(userId, dataType) would produce.
- * Mirrors the logic in localStorageService.ts.
+ * Returns the localStorage key for a given (stripped) identifier and dataType.
+ *
+ * Key format mirrors getUserDataKey(userId, dataType) = "bs_" + userId + "_" + dataType:
+ *   - II users:     username = principalText  → "bs_principal_<principalText>_<dataType>"
+ *   - Legacy users: username = plain username → "bs_user_<username>_<dataType>"
+ *
+ * Principal IDs always contain dashes (e.g. "2vxsx-fae"), usernames don't.
  */
 function localKey(username: string, dataType: string): string {
+  // If the identifier looks like a Principal ID (contains dashes), it came from II
+  if (username.includes("-")) {
+    return `bs_principal_${username}_${dataType}`;
+  }
+  // Legacy username format
   return `bs_user_${username}_${dataType}`;
 }
 
@@ -138,7 +170,8 @@ export function scheduleSync(
 
 /**
  * Fetches all data types from the canister for a given username and writes them
- * into localStorage. Uses latest-timestamp conflict resolution.
+ * into localStorage. Remote (canister) data is always treated as source of truth
+ * during login sync — this ensures a fresh device always gets the real profile.
  */
 export async function pullAllData(
   username: string,
@@ -146,6 +179,7 @@ export async function pullAllData(
 ): Promise<void> {
   if (!username || !actor) return;
 
+  setIsPulling(true);
   try {
     // First, get the list of data types stored on the canister
     let storedTypes: string[] = [];
@@ -165,23 +199,63 @@ export async function pullAllData(
       typesToPull.map(async (dataType) => {
         try {
           const remote = await actor.getUserData(username, dataType);
-          if (remote !== null && remote !== undefined) {
-            // Write to localStorage using the stable key format
+          // Only skip null/undefined/empty string — empty arrays [] and objects {} ARE valid data
+          if (remote !== null && remote !== undefined && remote.trim() !== "") {
+            // Validate it's parseable JSON before storing
             const key = localKey(username, dataType);
-            // Conflict resolution: compare timestamps if both are arrays/objects with timestamps
             try {
-              const localRaw = localStorage.getItem(key);
-              if (localRaw) {
-                // If both exist, use the one with more data (simple heuristic for arrays)
-                // For more precise conflict resolution, prefer remote if it's longer
-                if (remote.length >= localRaw.length) {
-                  localStorage.setItem(key, remote);
+              const parsed = JSON.parse(remote);
+              // For arrays: prefer canister data if it has more items than local,
+              // otherwise prefer canister data (it's the authoritative server).
+              // Exception: if canister has [] but local has real data, keep local AND push local.
+              if (Array.isArray(parsed) && parsed.length === 0) {
+                const existing = localStorage.getItem(key);
+                if (existing) {
+                  try {
+                    const existingParsed = JSON.parse(existing);
+                    if (
+                      Array.isArray(existingParsed) &&
+                      existingParsed.length > 0
+                    ) {
+                      // Local has real data, canister is empty — push local to canister
+                      console.info(
+                        `[SyncService] Canister empty for ${dataType}, pushing local data up`,
+                      );
+                      actor
+                        .saveUserData(username, dataType, existing)
+                        .catch(() => {});
+                      // Keep local data, don't overwrite with empty canister
+                      return;
+                    }
+                  } catch {
+                    // ignore parse error
+                  }
                 }
-              } else {
-                localStorage.setItem(key, remote);
               }
-            } catch {
+              // Valid JSON — always overwrite local (canister is source of truth on login)
               localStorage.setItem(key, remote);
+            } catch {
+              // If parse fails, still store it as-is
+              localStorage.setItem(key, remote);
+            }
+          } else {
+            // Canister has no data for this type — check if we have local data to push up
+            const key = localKey(username, dataType);
+            const existing = localStorage.getItem(key);
+            if (existing && existing.trim() !== "") {
+              try {
+                const parsed = JSON.parse(existing);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                  console.info(
+                    `[SyncService] Canister missing ${dataType}, pushing local data up`,
+                  );
+                  actor
+                    .saveUserData(username, dataType, existing)
+                    .catch(() => {});
+                }
+              } catch {
+                // ignore
+              }
             }
           }
         } catch (e) {
@@ -200,7 +274,47 @@ export async function pullAllData(
     localStorage.setItem(LAST_SYNC_KEY, Date.now().toString());
   } catch (e) {
     console.warn("[SyncService] pullAllData failed:", e);
+  } finally {
+    setIsPulling(false);
   }
+}
+
+/**
+ * Pushes ALL local data types for a given username to the canister immediately.
+ * Used at registration and manual sync — ensures canister has the latest copy
+ * so other devices can pull it on login.
+ *
+ * @param username  plain username (no "user_" prefix)
+ * @param userId    localStorage userId ("user_<username>")
+ * @param actor     backend actor
+ */
+export async function pushAllLocalData(
+  username: string,
+  userId: string,
+  actor: backendInterface,
+): Promise<void> {
+  if (!username || !userId || !actor) return;
+
+  const results = await Promise.allSettled(
+    SYNC_DATA_TYPES.map(async (dataType) => {
+      try {
+        const key = localKey(username, dataType);
+        const raw = localStorage.getItem(key);
+        if (raw !== null && raw !== undefined) {
+          // Push even empty arrays/objects — they represent valid state
+          await actor.saveUserData(username, dataType, raw);
+        }
+      } catch (e) {
+        console.warn(`[SyncService] Failed to push ${dataType}:`, e);
+      }
+    }),
+  );
+
+  const succeeded = results.filter((r) => r.status === "fulfilled").length;
+  console.info(
+    `[SyncService] Pushed ${succeeded}/${SYNC_DATA_TYPES.length} data types for "${username}"`,
+  );
+  localStorage.setItem(LAST_SYNC_KEY, Date.now().toString());
 }
 
 /**
@@ -252,10 +366,27 @@ export async function flushQueue(
 }
 
 /**
+ * Removes queue items older than 1 hour — they are stale and will never succeed.
+ * Called on startup to prevent the "Syncing…" indicator from being stuck forever.
+ */
+export function pruneStaleQueue(): void {
+  const queue = getQueue();
+  const oneHourAgo = Date.now() - 60 * 60 * 1000;
+  const fresh = queue.filter((item) => item.timestamp > oneHourAgo);
+  if (fresh.length !== queue.length) {
+    saveQueue(fresh);
+    console.info(
+      `[SyncService] Pruned ${queue.length - fresh.length} stale sync queue items`,
+    );
+  }
+}
+
+/**
  * Returns the current sync status.
  */
 export function getSyncStatus(): SyncStatus {
   if (!navigator.onLine) return "offline";
+  if (_isPulling) return "pulling";
   const queue = getQueue();
   if (queue.length > 0) return "pending";
   return "synced";
@@ -266,12 +397,17 @@ export function getSyncStatus(): SyncStatus {
  * and schedules a sync for the changed data type.
  */
 let _globalActor: backendInterface | null = null;
+let _listenerRegistered = false;
 
 export function setGlobalActor(actor: backendInterface | null): void {
   _globalActor = actor;
 }
 
 export function initDataChangeListener(): void {
+  // Guard against duplicate listener registration on re-mounts
+  if (_listenerRegistered) return;
+  _listenerRegistered = true;
+
   window.addEventListener("bs:data-changed", ((
     e: CustomEvent<{ userId: string; dataType: string; data: string }>,
   ) => {

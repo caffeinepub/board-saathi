@@ -21,13 +21,11 @@ export interface ChatMessage {
 export type FeedbackType = { 'appreciate' : null } |
   { 'scold' : null } |
   { 'comment' : null };
-export interface ParentProfile {
+export interface ParentProfilePublic {
   'username' : string,
-  'password' : Password,
   'name' : string,
   'linkedStudentUsername' : string,
 }
-export interface Password { 'hash' : string }
 export interface PresenceInfo { 'isOnline' : boolean, 'lastSeen' : Time }
 export interface StudentFeedback {
   'id' : bigint,
@@ -37,10 +35,9 @@ export interface StudentFeedback {
   'student' : Principal,
   'parent' : Principal,
 }
-export interface StudentProfile {
+export interface StudentProfilePublic {
   'username' : string,
   'school' : string,
-  'password' : Password,
   'name' : string,
   'studentClass' : bigint,
 }
@@ -91,19 +88,22 @@ export interface _SERVICE {
   'getFeedbackForStudent' : ActorMethod<[Principal], Array<StudentFeedback>>,
   'getFeedbackFromParent' : ActorMethod<[Principal], Array<StudentFeedback>>,
   'getMessages' : ActorMethod<[Principal], [Array<ChatMessage>, boolean]>,
-  'getParentByUsername' : ActorMethod<[string], [] | [ParentProfile]>,
-  'getParentProfileByUsername' : ActorMethod<[string], [] | [ParentProfile]>,
+  'getParentByUsername' : ActorMethod<[string], [] | [ParentProfilePublic]>,
+  'getParentProfileByUsername' : ActorMethod<
+    [string],
+    [] | [ParentProfilePublic]
+  >,
   'getPresence' : ActorMethod<[Principal], PresenceInfo>,
-  'getStudentByUsername' : ActorMethod<[string], [] | [StudentProfile]>,
+  'getStudentByUsername' : ActorMethod<[string], [] | [StudentProfilePublic]>,
   'getTypingStatus' : ActorMethod<[Principal], boolean>,
   /**
-   * / Get user data by username + dataType
+   * / Get user data by username + dataType - only owner or admin can read
    */
   'getUserData' : ActorMethod<[string, string], [] | [string]>,
   'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,
   'isCallerAdmin' : ActorMethod<[], boolean>,
   /**
-   * / List all data types stored for a given username
+   * / List all data types stored for a given username - only owner or admin can list
    */
   'listUserDataTypes' : ActorMethod<[string], Array<string>>,
   'markMessagesRead' : ActorMethod<[Principal], undefined>,
@@ -114,7 +114,7 @@ export interface _SERVICE {
   >,
   'saveCallerUserProfile' : ActorMethod<[UserProfile], undefined>,
   /**
-   * / Save user data (username + dataType) JSON blob
+   * / Save user data (username + dataType) JSON blob - only owner or admin can save
    */
   'saveUserData' : ActorMethod<[string, string, string], undefined>,
   'sendMessage' : ActorMethod<[Principal, string, string], undefined>,

@@ -29,16 +29,21 @@ import {
 import React, { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { useActor } from "../hooks/useActor";
+import { useInternetIdentity } from "../hooks/useInternetIdentity";
 import { useGetChildMessages } from "../hooks/useQueries";
 import {
   clearCurrentSession,
+  clearIIPrincipal,
+  clearParentSession,
   getCurrentUserId,
+  getIIPrincipal,
   getUserAccountById,
   isGuest,
 } from "../utils/localStorageService";
 import {
   flushQueue,
   initDataChangeListener,
+  pruneStaleQueue,
   setGlobalActor,
 } from "../utils/syncService";
 import BottomNavBar from "./BottomNavBar";
@@ -90,18 +95,34 @@ export default function Layout() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { actor } = useActor();
+  const { clear: iiClear } = useInternetIdentity();
   const guest = isGuest();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
-  // Initialise the data-change listener once (registers the window event handler)
+  // Initialise the data-change listener once and prune stale queue items
   useEffect(() => {
     initDataChangeListener();
+    pruneStaleQueue(); // clears any stuck queue items from previous sessions
   }, []);
 
-  // Keep syncService's global actor reference up to date
+  // Keep syncService's global actor reference up to date.
+  // Also flush the pending sync queue immediately whenever the actor becomes
+  // available — this ensures any data saved while actor was null gets pushed.
   useEffect(() => {
     setGlobalActor(actor);
+    if (actor && navigator.onLine) {
+      const userId = getCurrentUserId();
+      if (userId && userId !== "guest") {
+        let username = userId;
+        if (userId.startsWith("principal_")) {
+          username = userId.slice(10);
+        } else if (userId.startsWith("user_")) {
+          username = userId.slice(5);
+        }
+        flushQueue(username, actor).catch(() => {});
+      }
+    }
   }, [actor]);
 
   // Track online/offline status and flush pending sync queue on reconnect
@@ -113,9 +134,12 @@ export default function Layout() {
       if (actor) {
         const userId = getCurrentUserId();
         if (userId && userId !== "guest") {
-          const username = userId.startsWith("user_")
-            ? userId.slice(5)
-            : userId;
+          let username = userId;
+          if (userId.startsWith("principal_")) {
+            username = userId.slice(10); // strip "principal_"
+          } else if (userId.startsWith("user_")) {
+            username = userId.slice(5); // strip "user_"
+          }
           flushQueue(username, actor).catch(() => {});
         }
       }
@@ -136,16 +160,24 @@ export default function Layout() {
   const getCurrentUsername = (): string | null => {
     const userId = getCurrentUserId();
     if (!userId || userId === "guest") return null;
+    // For II users: extract username from stored account
     const account = getUserAccountById(userId);
-    return account?.username || null;
+    if (account) return account.username;
+    // For II users with no local account yet, use principal text
+    const iiPrincipal = getIIPrincipal();
+    return iiPrincipal || null;
   };
 
   const currentUsername = getCurrentUsername();
   const { unreadCount } = useGetChildMessages(guest ? null : currentUsername);
 
   const handleLogout = () => {
+    // Clear Internet Identity session
+    iiClear();
+    clearIIPrincipal();
+    // Clear legacy session
     clearCurrentSession();
-    localStorage.removeItem("bs_parentSession");
+    clearParentSession();
     queryClient.clear();
     toast.success("Logged out successfully");
     // Full page reload to /login so the router re-evaluates auth state from scratch
@@ -187,8 +219,16 @@ export default function Layout() {
               alt="Board Saathi"
               className="w-8 h-8 rounded-lg"
               onError={(e) => {
-                (e.currentTarget as HTMLImageElement).src =
-                  "/assets/generated/dev-winner-icon-192.dim_192x192.png";
+                const el = e.currentTarget as HTMLImageElement;
+                if (!el.dataset.fallback) {
+                  el.dataset.fallback = "1";
+                  el.src = "/assets/generated/dev-winner-icon.dim_512x512.png";
+                } else if (el.dataset.fallback === "1") {
+                  el.dataset.fallback = "2";
+                  el.src = "/assets/generated/app-icon-512.dim_512x512.png";
+                } else {
+                  el.style.display = "none";
+                }
               }}
             />
             <div>
@@ -286,8 +326,16 @@ export default function Layout() {
               alt="Board Saathi"
               className="w-8 h-8 rounded-lg"
               onError={(e) => {
-                (e.currentTarget as HTMLImageElement).src =
-                  "/assets/generated/dev-winner-icon-192.dim_192x192.png";
+                const el = e.currentTarget as HTMLImageElement;
+                if (!el.dataset.fallback) {
+                  el.dataset.fallback = "1";
+                  el.src = "/assets/generated/dev-winner-icon.dim_512x512.png";
+                } else if (el.dataset.fallback === "1") {
+                  el.dataset.fallback = "2";
+                  el.src = "/assets/generated/app-icon-512.dim_512x512.png";
+                } else {
+                  el.style.display = "none";
+                }
               }}
             />
             <div>
@@ -378,8 +426,16 @@ export default function Layout() {
               alt=""
               className="w-6 h-6 rounded"
               onError={(e) => {
-                (e.currentTarget as HTMLImageElement).src =
-                  "/assets/generated/dev-winner-icon-192.dim_192x192.png";
+                const el = e.currentTarget as HTMLImageElement;
+                if (!el.dataset.fallback) {
+                  el.dataset.fallback = "1";
+                  el.src = "/assets/generated/dev-winner-icon.dim_512x512.png";
+                } else if (el.dataset.fallback === "1") {
+                  el.dataset.fallback = "2";
+                  el.src = "/assets/generated/app-icon-512.dim_512x512.png";
+                } else {
+                  el.style.display = "none";
+                }
               }}
             />
             <span className="font-black text-sm">Board Saathi</span>

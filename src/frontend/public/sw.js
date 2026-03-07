@@ -1,6 +1,6 @@
 // ─── Board Saathi Service Worker ───────────────────────────────────────────
 // Bump this version string whenever you want to force a full cache refresh.
-const CACHE_VERSION = 'board-saathi-v9';
+const CACHE_VERSION = 'board-saathi-v10';
 const STATIC_CACHE  = `${CACHE_VERSION}-static`;
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`;
 

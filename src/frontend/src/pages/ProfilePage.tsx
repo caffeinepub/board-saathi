@@ -6,10 +6,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
   Cloud,
-  Eye,
-  EyeOff,
+  Fingerprint,
   GraduationCap,
-  Lock,
   LogOut,
   RefreshCw,
   Save,
@@ -20,12 +18,15 @@ import type React from "react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useActor } from "../hooks/useActor";
+import { useInternetIdentity } from "../hooks/useInternetIdentity";
 import {
   clearCurrentSession,
+  clearIIPrincipal,
+  clearParentSession,
   getCurrentUserAccount,
+  getIIPrincipal,
   isGuest,
   saveUserAccount,
-  updateUserPassword,
 } from "../utils/localStorageService";
 import { flushQueue, pullAllData } from "../utils/syncService";
 
@@ -33,8 +34,11 @@ export default function ProfilePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { actor } = useActor();
+  const { clear: iiClear } = useInternetIdentity();
   const guest = isGuest();
   const account = guest ? null : getCurrentUserAccount();
+  const iiPrincipal = getIIPrincipal();
+  const isIIUser = !!iiPrincipal;
 
   const [name, setName] = useState(account?.name ?? "");
   const [school, setSchool] = useState(account?.school ?? "");
@@ -43,13 +47,6 @@ export default function ProfilePage() {
   );
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
-
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [showCurrentPw, setShowCurrentPw] = useState(false);
-  const [showNewPw, setShowNewPw] = useState(false);
-  const [changingPw, setChangingPw] = useState(false);
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,41 +69,13 @@ export default function ProfilePage() {
     }
   };
 
-  const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!account) return;
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      toast.error("Please fill in all password fields");
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      toast.error("New passwords do not match");
-      return;
-    }
-    if (newPassword.length < 4) {
-      toast.error("Password must be at least 4 characters");
-      return;
-    }
-    setChangingPw(true);
-    try {
-      const success = updateUserPassword(account.username, newPassword);
-      if (success) {
-        toast.success("Password changed successfully!");
-        setCurrentPassword("");
-        setNewPassword("");
-        setConfirmPassword("");
-      } else {
-        toast.error("Failed to change password");
-      }
-    } finally {
-      setChangingPw(false);
-    }
-  };
-
   const handleLogout = () => {
+    // Clear Internet Identity session
+    iiClear();
+    clearIIPrincipal();
+    // Clear legacy session
     clearCurrentSession();
-    // Also clear parent session if any
-    localStorage.removeItem("bs_parentSession");
+    clearParentSession();
     queryClient.clear();
     toast.success("Logged out successfully");
     // Force a full page reload to "/login" so the router re-evaluates auth state
@@ -115,7 +84,7 @@ export default function ProfilePage() {
   };
 
   const handleSyncNow = async () => {
-    if (!account || !actor) {
+    if (!actor) {
       toast.error("Cannot sync: not connected to server.");
       return;
     }
@@ -123,13 +92,18 @@ export default function ProfilePage() {
       toast.error("Cannot sync: you are offline.");
       return;
     }
+    // Determine the sync identifier: principal for II users, username for legacy
+    const syncKey = iiPrincipal || account?.username;
+    if (!syncKey) {
+      toast.error("Cannot sync: no account found.");
+      return;
+    }
     setSyncing(true);
     try {
-      const username = account.username;
       toast.info("Uploading your data...", { duration: 2000 });
-      await flushQueue(username, actor);
+      await flushQueue(syncKey, actor);
       toast.info("Downloading latest data...", { duration: 2000 });
-      await pullAllData(username, actor);
+      await pullAllData(syncKey, actor);
       toast.success("Data synced successfully! ✓");
     } catch (e) {
       toast.error("Sync failed. Please try again.");
@@ -202,9 +176,23 @@ export default function ProfilePage() {
           <CardTitle className="text-base">Account Information</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
+          {/* Auth method badge */}
+          {isIIUser && (
+            <div className="flex items-center gap-2 p-2 rounded-lg bg-primary/5 border border-primary/10">
+              <Fingerprint className="w-4 h-4 text-primary flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-primary">
+                  Internet Identity
+                </p>
+                <p className="text-[10px] text-muted-foreground truncate">
+                  {iiPrincipal}
+                </p>
+              </div>
+            </div>
+          )}
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Username</span>
-            <span className="font-medium">@{account.username}</span>
+            <span className="text-muted-foreground">Name</span>
+            <span className="font-medium">{account.name}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">Class</span>
@@ -289,97 +277,6 @@ export default function ProfilePage() {
                 <Save className="w-4 h-4" />
               )}
               {saving ? "Saving..." : "Save Profile"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      {/* Change Password */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Lock className="w-4 h-4 text-primary" />
-            Change Password
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleChangePassword} className="space-y-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="current-pw">Current Password</Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  id="current-pw"
-                  type={showCurrentPw ? "text" : "password"}
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  className="pl-9 pr-10"
-                  placeholder="Current password"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowCurrentPw(!showCurrentPw)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  {showCurrentPw ? (
-                    <EyeOff className="w-4 h-4" />
-                  ) : (
-                    <Eye className="w-4 h-4" />
-                  )}
-                </button>
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="new-pw">New Password</Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  id="new-pw"
-                  type={showNewPw ? "text" : "password"}
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  className="pl-9 pr-10"
-                  placeholder="New password (min. 4 chars)"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowNewPw(!showNewPw)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  {showNewPw ? (
-                    <EyeOff className="w-4 h-4" />
-                  ) : (
-                    <Eye className="w-4 h-4" />
-                  )}
-                </button>
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="confirm-pw">Confirm New Password</Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  id="confirm-pw"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="pl-9"
-                  placeholder="Confirm new password"
-                />
-              </div>
-            </div>
-            <Button
-              type="submit"
-              variant="outline"
-              className="w-full gap-2"
-              disabled={changingPw}
-            >
-              {changingPw ? (
-                <span className="w-4 h-4 border-2 border-foreground/30 border-t-foreground rounded-full animate-spin" />
-              ) : (
-                <Lock className="w-4 h-4" />
-              )}
-              {changingPw ? "Changing..." : "Change Password"}
             </Button>
           </form>
         </CardContent>

@@ -97,23 +97,24 @@ export interface StudentFeedback {
     student: Principal;
     parent: Principal;
 }
-export interface StudentProfile {
+export interface ParentProfilePublic {
     username: string;
-    school: string;
-    password: Password;
     name: string;
-    studentClass: bigint;
+    linkedStudentUsername: string;
 }
-export type Time = bigint;
 export interface PresenceInfo {
     isOnline: boolean;
     lastSeen: Time;
 }
+export type Time = bigint;
+export interface StudentProfilePublic {
+    username: string;
+    school: string;
+    name: string;
+    studentClass: bigint;
+}
 export interface _CaffeineStorageRefillInformation {
     proposed_top_up_amount?: bigint;
-}
-export interface Password {
-    hash: string;
 }
 export interface ChatMessage {
     id: bigint;
@@ -126,12 +127,6 @@ export interface ChatMessage {
 export interface _CaffeineStorageCreateCertificateResult {
     method: string;
     blob_hash: string;
-}
-export interface ParentProfile {
-    username: string;
-    password: Password;
-    name: string;
-    linkedStudentUsername: string;
 }
 export interface UserProfile {
     username: string;
@@ -170,19 +165,19 @@ export interface backendInterface {
     getFeedbackForStudent(student: Principal): Promise<Array<StudentFeedback>>;
     getFeedbackFromParent(parent: Principal): Promise<Array<StudentFeedback>>;
     getMessages(user: Principal): Promise<[Array<ChatMessage>, boolean]>;
-    getParentByUsername(username: string): Promise<ParentProfile | null>;
-    getParentProfileByUsername(username: string): Promise<ParentProfile | null>;
+    getParentByUsername(username: string): Promise<ParentProfilePublic | null>;
+    getParentProfileByUsername(username: string): Promise<ParentProfilePublic | null>;
     getPresence(user: Principal): Promise<PresenceInfo>;
-    getStudentByUsername(username: string): Promise<StudentProfile | null>;
+    getStudentByUsername(username: string): Promise<StudentProfilePublic | null>;
     getTypingStatus(user: Principal): Promise<boolean>;
     /**
-     * / Get user data by username + dataType
+     * / Get user data by username + dataType - only owner or admin can read
      */
     getUserData(username: string, dataType: string): Promise<string | null>;
     getUserProfile(user: Principal): Promise<UserProfile | null>;
     isCallerAdmin(): Promise<boolean>;
     /**
-     * / List all data types stored for a given username
+     * / List all data types stored for a given username - only owner or admin can list
      */
     listUserDataTypes(username: string): Promise<Array<string>>;
     markMessagesRead(sender: Principal): Promise<void>;
@@ -190,7 +185,7 @@ export interface backendInterface {
     registerStudent(username: string, name: string, school: string, studentClass: bigint, password: string): Promise<void>;
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
     /**
-     * / Save user data (username + dataType) JSON blob
+     * / Save user data (username + dataType) JSON blob - only owner or admin can save
      */
     saveUserData(username: string, dataType: string, jsonBlob: string): Promise<void>;
     sendMessage(recipient: Principal, senderRole: string, content: string): Promise<void>;
@@ -198,7 +193,7 @@ export interface backendInterface {
     updateFeedback(feedbackId: bigint, updatedMessage: string, feedbackType: FeedbackType): Promise<void>;
     updatePresence(isOnline: boolean): Promise<void>;
 }
-import type { FeedbackType as _FeedbackType, ParentProfile as _ParentProfile, StudentFeedback as _StudentFeedback, StudentProfile as _StudentProfile, Time as _Time, UserProfile as _UserProfile, UserRole as _UserRole, _CaffeineStorageRefillInformation as __CaffeineStorageRefillInformation, _CaffeineStorageRefillResult as __CaffeineStorageRefillResult } from "./declarations/backend.did.d.ts";
+import type { FeedbackType as _FeedbackType, ParentProfilePublic as _ParentProfilePublic, StudentFeedback as _StudentFeedback, StudentProfilePublic as _StudentProfilePublic, Time as _Time, UserProfile as _UserProfile, UserRole as _UserRole, _CaffeineStorageRefillInformation as __CaffeineStorageRefillInformation, _CaffeineStorageRefillResult as __CaffeineStorageRefillResult } from "./declarations/backend.did.d.ts";
 export class Backend implements backendInterface {
     constructor(private actor: ActorSubclass<_SERVICE>, private _uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, private _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, private processError?: (error: unknown) => never){}
     async _caffeineStorageBlobIsLive(arg0: Uint8Array): Promise<boolean> {
@@ -431,7 +426,7 @@ export class Backend implements backendInterface {
             ];
         }
     }
-    async getParentByUsername(arg0: string): Promise<ParentProfile | null> {
+    async getParentByUsername(arg0: string): Promise<ParentProfilePublic | null> {
         if (this.processError) {
             try {
                 const result = await this.actor.getParentByUsername(arg0);
@@ -445,7 +440,7 @@ export class Backend implements backendInterface {
             return from_candid_opt_n20(this._uploadFile, this._downloadFile, result);
         }
     }
-    async getParentProfileByUsername(arg0: string): Promise<ParentProfile | null> {
+    async getParentProfileByUsername(arg0: string): Promise<ParentProfilePublic | null> {
         if (this.processError) {
             try {
                 const result = await this.actor.getParentProfileByUsername(arg0);
@@ -473,7 +468,7 @@ export class Backend implements backendInterface {
             return result;
         }
     }
-    async getStudentByUsername(arg0: string): Promise<StudentProfile | null> {
+    async getStudentByUsername(arg0: string): Promise<StudentProfilePublic | null> {
         if (this.processError) {
             try {
                 const result = await this.actor.getStudentByUsername(arg0);
@@ -699,10 +694,10 @@ function from_candid__CaffeineStorageRefillResult_n4(_uploadFile: (file: Externa
 function from_candid_opt_n12(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_UserProfile]): UserProfile | null {
     return value.length === 0 ? null : value[0];
 }
-function from_candid_opt_n20(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_ParentProfile]): ParentProfile | null {
+function from_candid_opt_n20(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_ParentProfilePublic]): ParentProfilePublic | null {
     return value.length === 0 ? null : value[0];
 }
-function from_candid_opt_n21(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_StudentProfile]): StudentProfile | null {
+function from_candid_opt_n21(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_StudentProfilePublic]): StudentProfilePublic | null {
     return value.length === 0 ? null : value[0];
 }
 function from_candid_opt_n22(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [string]): string | null {

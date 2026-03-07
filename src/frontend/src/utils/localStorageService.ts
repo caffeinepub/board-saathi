@@ -67,6 +67,15 @@ export function getUserAccountById(userId: string): StoredUserAccount | null {
       return byUsername;
     }
   }
+
+  // Fallback: if userId looks like "principal_<principalText>", find by stored principal userId
+  // Accounts saved for II users store userId = "principal_<principalText>"
+  if (userId.startsWith("principal_")) {
+    // Already checked exact match above — no further lookup needed
+    // But if no account found, return null (II account may not be saved locally yet)
+    return null;
+  }
+
   return null;
 }
 
@@ -112,11 +121,47 @@ export function isUsernameAvailable(username: string): boolean {
   return !getUserAccount(username);
 }
 
-// Session management
+// ─────────────────────────────────────────────────────────────────────────────
+// INTERNET IDENTITY SESSION
+// ─────────────────────────────────────────────────────────────────────────────
+
+const II_PRINCIPAL_KEY = "bs_ii_principal";
+
+/** Stores the Internet Identity principal text in localStorage. */
+export function getIIPrincipal(): string | null {
+  return localStorage.getItem(II_PRINCIPAL_KEY);
+}
+
+/** Persist the Internet Identity principal after login. */
+export function setIIPrincipal(principal: string): void {
+  localStorage.setItem(II_PRINCIPAL_KEY, principal);
+}
+
+/** Remove the stored II principal (call on logout). */
+export function clearIIPrincipal(): void {
+  localStorage.removeItem(II_PRINCIPAL_KEY);
+}
+
+/**
+ * Convert a plain principal text to a localStorage userId namespace.
+ * e.g. "2vxsx-fae" → "principal_2vxsx-fae"
+ */
+export function principalToUserId(principalText: string): string {
+  return `principal_${principalText}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SESSION MANAGEMENT
+// ─────────────────────────────────────────────────────────────────────────────
+
 // NOTE: We use localStorage (not sessionStorage) so the session persists
 // across tab closes, PWA restarts, and device reboots.
 // The session is only cleared when the user explicitly logs out.
 export function getCurrentUserId(): string | null {
+  // First: check Internet Identity principal (new system — same identity on all devices)
+  const iiPrincipal = getIIPrincipal();
+  if (iiPrincipal) return `principal_${iiPrincipal}`;
+  // Fall back to legacy username-based session
   return localStorage.getItem("bs_currentUserId");
 }
 

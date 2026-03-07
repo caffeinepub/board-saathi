@@ -37,6 +37,20 @@ actor {
     password : Password;
   };
 
+  // Public profile types without password
+  public type StudentProfilePublic = {
+    name : Text;
+    username : Text;
+    school : Text;
+    studentClass : Nat;
+  };
+
+  public type ParentProfilePublic = {
+    name : Text;
+    username : Text;
+    linkedStudentUsername : Text;
+  };
+
   public type Subject = {
     id : Nat;
     name : Text;
@@ -409,27 +423,53 @@ actor {
     parentProfiles.add(username, profile);
   };
 
-  // Query parent profile by username - only accessible to registered users (password hash is sensitive)
-  public query ({ caller }) func getParentByUsername(username : Text) : async ?ParentProfile {
+  // Query parent profile by username - only accessible to registered users (password hash removed from response)
+  public query ({ caller }) func getParentByUsername(username : Text) : async ?ParentProfilePublic {
     if (not Authorization.hasPermission(accessControlState, caller, #user)) {
       Runtime.trap("Unauthorized: Only registered users can look up parent profiles");
     };
     switch (parentProfiles.get(username)) {
-      case (?profile) { ?profile };
+      case (?profile) {
+        ?{
+          name = profile.name;
+          username = profile.username;
+          linkedStudentUsername = profile.linkedStudentUsername;
+        }
+      };
       case (null) { null };
     };
   };
 
-  // Query student profile by username - NO AUTHORIZATION (public method for anonymous principals)
-  public query func getStudentByUsername(username : Text) : async ?StudentProfile {
-    studentProfiles.values().find(
+  // Query student profile by username - returns public profile without password
+  public query func getStudentByUsername(username : Text) : async ?StudentProfilePublic {
+    let found = studentProfiles.values().find(
       func(s) { s.username == username }
     );
+    switch (found) {
+      case (?profile) {
+        ?{
+          name = profile.name;
+          username = profile.username;
+          school = profile.school;
+          studentClass = profile.studentClass;
+        }
+      };
+      case (null) { null };
+    };
   };
 
-  // Query parent profile by username - NO AUTHORIZATION (public method for anonymous principals)
-  public query func getParentProfileByUsername(username : Text) : async ?ParentProfile {
-    parentProfiles.get(username);
+  // Query parent profile by username - returns public profile without password
+  public query func getParentProfileByUsername(username : Text) : async ?ParentProfilePublic {
+    switch (parentProfiles.get(username)) {
+      case (?profile) {
+        ?{
+          name = profile.name;
+          username = profile.username;
+          linkedStudentUsername = profile.linkedStudentUsername;
+        }
+      };
+      case (null) { null };
+    };
   };
 
   public query ({ caller }) func getCallerUserProfile() : async ?UserProfile {
@@ -701,15 +741,30 @@ actor {
     };
   };
 
-  // ------ NEW METHODS FOR GENERIC USER DATA STORAGE (NO AUTH AS REQUESTED) ------
-  // WARNING: These endpoints have no authorization as per user requirements.
-  // This means anyone can read/write any user's data if they know the username.
-  // This is inherently insecure but implemented as specified.
+  // ------ GENERIC USER DATA STORAGE WITH PROPER AUTHORIZATION ------
 
-  /// Save user data (username + dataType) JSON blob
+  /// Save user data (username + dataType) JSON blob - only owner or admin can save
   public shared ({ caller }) func saveUserData(username : Text, dataType : Text, jsonBlob : Text) : async () {
+    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
+      Runtime.trap("Unauthorized: Only registered users can save user data");
+    };
+    
     if (username == "" or dataType == "" or jsonBlob == "") {
       Runtime.trap("Username, dataType, and jsonBlob must not be empty");
+    };
+
+    // Verify ownership: caller must own the data they're saving (match username to their profile)
+    // or be an admin
+    let isOwner = switch (studentProfiles.get(caller)) {
+      case (?profile) { profile.username == username };
+      case (null) {
+        // Check if it's a parent profile
+        parentProfiles.values().any(func(p) { p.username == username })
+      };
+    };
+
+    if (not isOwner and not Authorization.isAdmin(accessControlState, caller)) {
+      Runtime.trap("Unauthorized: Can only save data for your own username");
     };
 
     let userMap = switch (userDataStore.get(username)) {
@@ -723,10 +778,27 @@ actor {
     userMap.add(dataType, jsonBlob);
   };
 
-  /// Get user data by username + dataType
+  /// Get user data by username + dataType - only owner or admin can read
   public query ({ caller }) func getUserData(username : Text, dataType : Text) : async ?Text {
+    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
+      Runtime.trap("Unauthorized: Only registered users can read user data");
+    };
+    
     if (username == "" or dataType == "") {
       Runtime.trap("Username and dataType must not be empty");
+    };
+
+    // Verify ownership: caller must own the data they're reading
+    let isOwner = switch (studentProfiles.get(caller)) {
+      case (?profile) { profile.username == username };
+      case (null) {
+        // Check if it's a parent profile
+        parentProfiles.values().any(func(p) { p.username == username })
+      };
+    };
+
+    if (not isOwner and not Authorization.isAdmin(accessControlState, caller)) {
+      Runtime.trap("Unauthorized: Can only read data for your own username");
     };
 
     switch (userDataStore.get(username)) {
@@ -735,10 +807,27 @@ actor {
     };
   };
 
-  /// List all data types stored for a given username
+  /// List all data types stored for a given username - only owner or admin can list
   public query ({ caller }) func listUserDataTypes(username : Text) : async [Text] {
+    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
+      Runtime.trap("Unauthorized: Only registered users can list user data types");
+    };
+    
     if (username == "") {
       Runtime.trap("Username must not be empty");
+    };
+
+    // Verify ownership
+    let isOwner = switch (studentProfiles.get(caller)) {
+      case (?profile) { profile.username == username };
+      case (null) {
+        // Check if it's a parent profile
+        parentProfiles.values().any(func(p) { p.username == username })
+      };
+    };
+
+    if (not isOwner and not Authorization.isAdmin(accessControlState, caller)) {
+      Runtime.trap("Unauthorized: Can only list data types for your own username");
     };
 
     switch (userDataStore.get(username)) {

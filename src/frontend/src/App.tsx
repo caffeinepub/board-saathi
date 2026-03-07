@@ -10,6 +10,7 @@ import {
 } from "@tanstack/react-router";
 import { ThemeProvider } from "next-themes";
 import React, { useEffect } from "react";
+import { InternetIdentityProvider } from "./hooks/useInternetIdentity";
 
 import Layout from "./components/Layout";
 import AttemptMockTestPage from "./pages/AttemptMockTestPage";
@@ -309,10 +310,12 @@ declare module "@tanstack/react-router" {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-        <RouterProvider router={router} />
-        <Toaster richColors position="top-center" />
-      </ThemeProvider>
+      <InternetIdentityProvider>
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+          <RouterProvider router={router} />
+          <Toaster richColors position="top-center" />
+        </ThemeProvider>
+      </InternetIdentityProvider>
     </QueryClientProvider>
   );
 }

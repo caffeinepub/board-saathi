@@ -52,10 +52,8 @@ export const ChatMessage = IDL.Record({
   'senderRole' : IDL.Text,
   'senderId' : IDL.Principal,
 });
-export const Password = IDL.Record({ 'hash' : IDL.Text });
-export const ParentProfile = IDL.Record({
+export const ParentProfilePublic = IDL.Record({
   'username' : IDL.Text,
-  'password' : Password,
   'name' : IDL.Text,
   'linkedStudentUsername' : IDL.Text,
 });
@@ -63,10 +61,9 @@ export const PresenceInfo = IDL.Record({
   'isOnline' : IDL.Bool,
   'lastSeen' : Time,
 });
-export const StudentProfile = IDL.Record({
+export const StudentProfilePublic = IDL.Record({
   'username' : IDL.Text,
   'school' : IDL.Text,
-  'password' : Password,
   'name' : IDL.Text,
   'studentClass' : IDL.Nat,
 });
@@ -126,18 +123,18 @@ export const idlService = IDL.Service({
     ),
   'getParentByUsername' : IDL.Func(
       [IDL.Text],
-      [IDL.Opt(ParentProfile)],
+      [IDL.Opt(ParentProfilePublic)],
       ['query'],
     ),
   'getParentProfileByUsername' : IDL.Func(
       [IDL.Text],
-      [IDL.Opt(ParentProfile)],
+      [IDL.Opt(ParentProfilePublic)],
       ['query'],
     ),
   'getPresence' : IDL.Func([IDL.Principal], [PresenceInfo], ['query']),
   'getStudentByUsername' : IDL.Func(
       [IDL.Text],
-      [IDL.Opt(StudentProfile)],
+      [IDL.Opt(StudentProfilePublic)],
       ['query'],
     ),
   'getTypingStatus' : IDL.Func([IDL.Principal], [IDL.Bool], ['query']),
@@ -215,18 +212,15 @@ export const idlFactory = ({ IDL }) => {
     'senderRole' : IDL.Text,
     'senderId' : IDL.Principal,
   });
-  const Password = IDL.Record({ 'hash' : IDL.Text });
-  const ParentProfile = IDL.Record({
+  const ParentProfilePublic = IDL.Record({
     'username' : IDL.Text,
-    'password' : Password,
     'name' : IDL.Text,
     'linkedStudentUsername' : IDL.Text,
   });
   const PresenceInfo = IDL.Record({ 'isOnline' : IDL.Bool, 'lastSeen' : Time });
-  const StudentProfile = IDL.Record({
+  const StudentProfilePublic = IDL.Record({
     'username' : IDL.Text,
     'school' : IDL.Text,
-    'password' : Password,
     'name' : IDL.Text,
     'studentClass' : IDL.Nat,
   });
@@ -286,18 +280,18 @@ export const idlFactory = ({ IDL }) => {
       ),
     'getParentByUsername' : IDL.Func(
         [IDL.Text],
-        [IDL.Opt(ParentProfile)],
+        [IDL.Opt(ParentProfilePublic)],
         ['query'],
       ),
     'getParentProfileByUsername' : IDL.Func(
         [IDL.Text],
-        [IDL.Opt(ParentProfile)],
+        [IDL.Opt(ParentProfilePublic)],
         ['query'],
       ),
     'getPresence' : IDL.Func([IDL.Principal], [PresenceInfo], ['query']),
     'getStudentByUsername' : IDL.Func(
         [IDL.Text],
-        [IDL.Opt(StudentProfile)],
+        [IDL.Opt(StudentProfilePublic)],
         ['query'],
       ),
     'getTypingStatus' : IDL.Func([IDL.Principal], [IDL.Bool], ['query']),

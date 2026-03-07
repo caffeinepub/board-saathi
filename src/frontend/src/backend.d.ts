@@ -15,20 +15,21 @@ export interface StudentFeedback {
     student: Principal;
     parent: Principal;
 }
-export interface StudentProfile {
+export interface ParentProfilePublic {
     username: string;
-    school: string;
-    password: Password;
     name: string;
-    studentClass: bigint;
+    linkedStudentUsername: string;
 }
-export type Time = bigint;
 export interface PresenceInfo {
     isOnline: boolean;
     lastSeen: Time;
 }
-export interface Password {
-    hash: string;
+export type Time = bigint;
+export interface StudentProfilePublic {
+    username: string;
+    school: string;
+    name: string;
+    studentClass: bigint;
 }
 export interface ChatMessage {
     id: bigint;
@@ -37,12 +38,6 @@ export interface ChatMessage {
     timestamp: Time;
     senderRole: string;
     senderId: Principal;
-}
-export interface ParentProfile {
-    username: string;
-    password: Password;
-    name: string;
-    linkedStudentUsername: string;
 }
 export interface UserProfile {
     username: string;
@@ -70,19 +65,19 @@ export interface backendInterface {
     getFeedbackForStudent(student: Principal): Promise<Array<StudentFeedback>>;
     getFeedbackFromParent(parent: Principal): Promise<Array<StudentFeedback>>;
     getMessages(user: Principal): Promise<[Array<ChatMessage>, boolean]>;
-    getParentByUsername(username: string): Promise<ParentProfile | null>;
-    getParentProfileByUsername(username: string): Promise<ParentProfile | null>;
+    getParentByUsername(username: string): Promise<ParentProfilePublic | null>;
+    getParentProfileByUsername(username: string): Promise<ParentProfilePublic | null>;
     getPresence(user: Principal): Promise<PresenceInfo>;
-    getStudentByUsername(username: string): Promise<StudentProfile | null>;
+    getStudentByUsername(username: string): Promise<StudentProfilePublic | null>;
     getTypingStatus(user: Principal): Promise<boolean>;
     /**
-     * / Get user data by username + dataType
+     * / Get user data by username + dataType - only owner or admin can read
      */
     getUserData(username: string, dataType: string): Promise<string | null>;
     getUserProfile(user: Principal): Promise<UserProfile | null>;
     isCallerAdmin(): Promise<boolean>;
     /**
-     * / List all data types stored for a given username
+     * / List all data types stored for a given username - only owner or admin can list
      */
     listUserDataTypes(username: string): Promise<Array<string>>;
     markMessagesRead(sender: Principal): Promise<void>;
@@ -90,7 +85,7 @@ export interface backendInterface {
     registerStudent(username: string, name: string, school: string, studentClass: bigint, password: string): Promise<void>;
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
     /**
-     * / Save user data (username + dataType) JSON blob
+     * / Save user data (username + dataType) JSON blob - only owner or admin can save
      */
     saveUserData(username: string, dataType: string, jsonBlob: string): Promise<void>;
     sendMessage(recipient: Principal, senderRole: string, content: string): Promise<void>;

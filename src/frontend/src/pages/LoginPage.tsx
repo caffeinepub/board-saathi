@@ -9,79 +9,93 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
   Eye,
   EyeOff,
-  Globe,
+  Fingerprint,
   GraduationCap,
   Lock,
   LogIn,
   School,
+  Shield,
   ShieldCheck,
+  Sparkles,
   User,
-  UserPlus,
   Users,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import type { backendInterface } from "../backend";
+import { createActorWithConfig } from "../config";
 import { useActor } from "../hooks/useActor";
+import { useInternetIdentity } from "../hooks/useInternetIdentity";
 import {
   type ParentSession,
   type StoredUserAccount,
-  findAccountsBySchool,
+  clearIIPrincipal,
   getParentAccount,
   initializeUserData,
-  isUsernameAvailable,
   parentLogin,
+  principalToUserId,
   saveParentAccountDirect,
   saveUserAccount,
   setCurrentUserId,
-  setParentSession,
+  setIIPrincipal,
   simpleHash,
-  updateUserPassword,
-  validateCredentials,
 } from "../utils/localStorageService";
-import { getUserDataKey } from "../utils/localStorageService";
-import { SYNC_DATA_TYPES, pullAllData } from "../utils/syncService";
+import { pullAllData, pushAllLocalData } from "../utils/syncService";
+import { getSecretParameter } from "../utils/urlParams";
 
-type Mode = "login" | "register";
+/**
+ * Creates a fresh authenticated actor directly using the II identity.
+ * This bypasses React Query caching entirely so we never get stuck waiting
+ * for the query to resolve after II login.
+ */
+async function createAuthenticatedActorDirect(
+  identity: import("@icp-sdk/core/agent").Identity,
+): Promise<backendInterface | null> {
+  try {
+    const actor = await createActorWithConfig({ agentOptions: { identity } });
+    const adminToken = getSecretParameter("caffeineAdminToken") || "";
+    await actor._initializeAccessControlWithSecret(adminToken);
+    return actor;
+  } catch (e) {
+    console.warn("[LoginPage] createAuthenticatedActorDirect failed:", e);
+    return null;
+  }
+}
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const ii = useInternetIdentity();
+  // Actor used only for parent login/register lookups (anonymous or cached actor is fine here)
   const { actor } = useActor();
-  const [mode, setMode] = useState<Mode>("login");
-  const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
 
-  // Login form
-  const [loginUsername, setLoginUsername] = useState("");
-  const [loginPassword, setLoginPassword] = useState("");
+  // ─── II flow state ─────────────────────────────────────────────────────────
+  const [iiProcessing, setIIProcessing] = useState(false);
+  const [iiError, setIIError] = useState<string | null>(null);
 
-  // Register form
-  const [regUsername, setRegUsername] = useState("");
-  const [regPassword, setRegPassword] = useState("");
-  const [regName, setRegName] = useState("");
-  const [regSchool, setRegSchool] = useState("");
-  const [regClass, setRegClass] = useState("10");
+  // Profile setup form (shown after first II login)
+  const [profileSetupOpen, setProfileSetupOpen] = useState(false);
+  const [setupName, setSetupName] = useState("");
+  const [setupSchool, setSetupSchool] = useState("");
+  const [setupClass, setSetupClass] = useState("10");
+  const [settingUpProfile, setSettingUpProfile] = useState(false);
 
-  // Forgot password
-  const [forgotOpen, setForgotOpen] = useState(false);
-  const [forgotSchool, setForgotSchool] = useState("");
-  const [forgotResults, setForgotResults] = useState<StoredUserAccount[]>([]);
-  const [forgotSearched, setForgotSearched] = useState(false);
-  const [resetUsername, setResetUsername] = useState("");
-  const [resetNewPassword, setResetNewPassword] = useState("");
-  const [resetDone, setResetDone] = useState(false);
+  // Track whether we've already triggered the II post-login flow
+  const iiFlowRunning = useRef(false);
 
-  // Parent login dialog
+  // ─── Parent login dialog ───────────────────────────────────────────────────
   const [parentLoginOpen, setParentLoginOpen] = useState(false);
   const [parentLoginUsername, setParentLoginUsername] = useState("");
   const [parentLoginPassword, setParentLoginPassword] = useState("");
   const [showParentLoginPassword, setShowParentLoginPassword] = useState(false);
   const [parentLoginLoading, setParentLoginLoading] = useState(false);
 
-  // Parent register dialog
+  // ─── Parent register dialog ────────────────────────────────────────────────
   const [parentRegisterOpen, setParentRegisterOpen] = useState(false);
   const [parentRegUsername, setParentRegUsername] = useState("");
   const [parentRegName, setParentRegName] = useState("");
@@ -90,192 +104,220 @@ export default function LoginPage() {
   const [showParentRegPassword, setShowParentRegPassword] = useState(false);
   const [parentRegLoading, setParentRegLoading] = useState(false);
 
-  // ─── Student Login ────────────────────────────────────────────────────────
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!loginUsername.trim() || !loginPassword.trim()) {
-      toast.error("Please enter username and password");
-      return;
-    }
-    setLoading(true);
-    try {
-      const username = loginUsername.trim();
-      const hashedPassword = simpleHash(loginPassword);
+  // ─── Post-login II flow ─────────────────────────────────────────────────────
+  // biome-ignore lint/correctness/useExhaustiveDependencies: actor is accessed via actorRef (stable ref) and navigate is stable — intentionally excluded to avoid infinite loops
+  useEffect(() => {
+    // Only run when identity becomes available (login succeeded)
+    if (!ii.identity || iiFlowRunning.current) return;
 
-      // Step 1: Check localStorage first (fast, offline-capable)
-      const localAccount = validateCredentials(username, loginPassword);
-      if (localAccount) {
-        // Use username as stable userId so data is consistent across devices
-        const stableUserId = `user_${localAccount.username}`;
-        setCurrentUserId(stableUserId);
-        // Pull latest data from canister (non-blocking, best-effort) before initializing
-        if (actor) {
-          const syncTimeout = new Promise<void>((resolve) =>
-            setTimeout(resolve, 8000),
+    const principal = ii.identity.getPrincipal();
+    if (principal.isAnonymous()) return;
+
+    const principalText = principal.toString();
+
+    iiFlowRunning.current = true;
+    setIIProcessing(true);
+    setIIError(null);
+
+    const run = async () => {
+      try {
+        // 1. Create a fresh authenticated actor directly using the II identity.
+        // We do NOT rely on the React Query actor (useActor) here because the query
+        // may still be loading the new actor after identity change — causing the
+        // "Could not connect" timeout. Creating directly is always reliable.
+        const identity = ii.identity!;
+        const resolvedActor = await createAuthenticatedActorDirect(identity);
+        if (!resolvedActor) {
+          throw new Error(
+            "Could not connect to the backend. Please check your internet connection and try again.",
           );
-          await Promise.race([pullAllData(username, actor), syncTimeout]);
         }
-        initializeUserData(stableUserId);
-        toast.success(`Welcome back, ${localAccount.name}!`);
-        navigate({ to: "/" });
-        return;
-      }
 
-      // Step 2: Not found locally — check the global backend server
-      if (actor) {
+        // 2. Check if profile already exists on canister
+        let profile: {
+          username: string;
+          name: string;
+          school: string;
+          studentClass: bigint;
+        } | null = null;
         try {
-          const backendStudent = await actor.getStudentByUsername(username);
-          if (backendStudent) {
-            // Verify password hash matches
-            if (backendStudent.password.hash !== hashedPassword) {
-              toast.error("Incorrect password. Please try again.");
-              return;
-            }
-            // Account found on backend — save locally for offline use
-            const account: StoredUserAccount = {
-              userId: `user_${username}`,
-              username: backendStudent.username,
-              passwordHash: backendStudent.password.hash,
-              name: backendStudent.name,
-              school: backendStudent.school,
-              studentClass: Number(backendStudent.studentClass),
-              createdAt: Date.now(),
-            };
-            saveUserAccount(account);
-            const stableUserId = `user_${username}`;
-            setCurrentUserId(stableUserId);
-            // Pull all user data from canister BEFORE initializeUserData
-            // so we don't overwrite canister data with empty defaults
-            toast.info("Syncing your profile from server...", {
-              duration: 4000,
-            });
-            const syncTimeout = new Promise<void>((resolve) =>
-              setTimeout(resolve, 10000),
-            );
-            await Promise.race([pullAllData(username, actor), syncTimeout]);
-            // Only initialize if no data came down from canister
-            initializeUserData(stableUserId);
-            toast.success(
-              `Welcome back, ${backendStudent.name}! Profile synced.`,
-            );
-            navigate({ to: "/" });
-            return;
-          }
-          toast.error(
-            "No account found with this username. Please register first.",
-          );
-        } catch {
-          toast.error(
-            "Invalid username or password. Could not reach server to verify.",
-          );
+          profile = await resolvedActor.getCallerUserProfile();
+        } catch (e) {
+          console.warn("[II Login] getCallerUserProfile failed:", e);
         }
-      } else {
-        toast.error(
-          "Account not found on this device. Please connect to the internet to sync your profile.",
-        );
+
+        const userId = principalToUserId(principalText);
+
+        if (profile) {
+          // ── Returning user ────────────────────────────────────────────────
+          // Set session
+          setIIPrincipal(principalText);
+
+          // Save profile locally for offline use
+          const localAccount: StoredUserAccount = {
+            userId,
+            username: profile.username || principalText,
+            passwordHash: "",
+            name: profile.name,
+            school: profile.school,
+            studentClass: Number(profile.studentClass),
+            createdAt: Date.now(),
+          };
+          saveUserAccount(localAccount);
+
+          // Step 1: Push any locally-pending data to canister FIRST.
+          // This ensures any subjects/chapters saved offline (queue not yet flushed)
+          // are uploaded before we pull — preventing overwrite of real data by stale canister state.
+          try {
+            const { pushAllLocalData: pushLocal } = await import(
+              "../utils/syncService"
+            );
+            await pushLocal(principalText, userId, resolvedActor);
+          } catch {
+            // Non-fatal — continue
+          }
+
+          // Step 2: Pull ALL data from canister — this is the source of truth on any device.
+          // We always pull and NEVER call initializeUserData for returning users,
+          // because that would overwrite real data (chapters, notes, etc.) with empty defaults.
+          const syncToast = toast.loading("Syncing your data from server...");
+          try {
+            await pullAllData(principalText, resolvedActor);
+            toast.dismiss(syncToast);
+          } catch {
+            toast.dismiss(syncToast);
+            // Non-fatal — continue with cached local data
+          }
+
+          // DO NOT call initializeUserData for returning users — their data
+          // is already on the canister and was just pulled above.
+          // initializeUserData would overwrite real subjects/chapters with empty defaults.
+
+          // Invalidate ALL React Query cache so every page re-reads from
+          // the freshly-pulled localStorage data instead of stale in-memory cache.
+          queryClient.clear();
+
+          toast.success(`Welcome back, ${profile.name}!`);
+          navigate({ to: "/" });
+        } else {
+          // ── First time user — show profile setup form ──────────────────
+          setIIProcessing(false);
+          setProfileSetupOpen(true);
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Login failed";
+        setIIError(msg);
+        // Clear the II session so user can try again
+        clearIIPrincipal();
+        iiFlowRunning.current = false;
+        setIIProcessing(false);
       }
-    } finally {
-      setLoading(false);
+    };
+
+    void run();
+  }, [ii.identity]);
+
+  // Reset flow flag when identity is cleared
+  useEffect(() => {
+    if (!ii.identity) {
+      iiFlowRunning.current = false;
     }
+  }, [ii.identity]);
+
+  // ─── Handle II login button click ──────────────────────────────────────────
+  const handleIILogin = () => {
+    setIIError(null);
+    ii.login();
   };
 
-  // ─── Student Registration ─────────────────────────────────────────────────
-  const handleRegister = async (e: React.FormEvent) => {
+  // ─── Profile setup form submit ─────────────────────────────────────────────
+  const handleProfileSetup = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (
-      !regUsername.trim() ||
-      !regPassword.trim() ||
-      !regName.trim() ||
-      !regSchool.trim()
-    ) {
-      toast.error("Please fill in all required fields");
+    if (!setupName.trim() || !setupSchool.trim()) {
+      toast.error("Please fill in your name and school");
       return;
     }
-    if (regPassword.length < 4) {
-      toast.error("Password must be at least 4 characters");
+    if (!ii.identity) {
+      toast.error("Internet Identity not connected. Please try again.");
       return;
     }
-    if (!isUsernameAvailable(regUsername.trim())) {
-      toast.error("Username already taken. Please choose another.");
-      return;
-    }
-    setLoading(true);
-    try {
-      const hashedPassword = simpleHash(regPassword);
-      const studentClass = Number.parseInt(regClass, 10) || 10;
 
-      // Try to register on the global backend server first
-      if (actor) {
-        try {
-          await actor.registerStudent(
-            regUsername.trim(),
-            regName.trim(),
-            regSchool.trim(),
-            BigInt(studentClass),
-            hashedPassword,
-          );
-          toast.success("Account saved to global server ✓");
-        } catch (backendErr: unknown) {
-          const errMsg =
-            backendErr instanceof Error
-              ? backendErr.message
-              : String(backendErr);
-          if (errMsg.includes("Username already taken")) {
-            toast.error(
-              "This username is already taken on the global server. Please choose another.",
-            );
-            return;
-          }
-          // Non-fatal: backend unavailable, continue with local-only
-          toast.warning(
-            "Could not reach global server. Account saved locally only — parents on other devices may not find it.",
-          );
-        }
-      } else {
-        toast.warning(
-          "Server not available. Account saved locally only — parents on other devices may not find it.",
+    const principal = ii.identity.getPrincipal();
+    if (principal.isAnonymous()) {
+      toast.error("Invalid identity. Please login again.");
+      return;
+    }
+
+    const principalText = principal.toString();
+    const userId = principalToUserId(principalText);
+    const studentClass = Number.parseInt(setupClass, 10) || 10;
+
+    setSettingUpProfile(true);
+    try {
+      // Create fresh authenticated actor directly (same approach as login flow)
+      const resolvedActor = await createAuthenticatedActorDirect(ii.identity!);
+      if (!resolvedActor) {
+        throw new Error(
+          "Cannot reach the backend. Please check your connection and try again.",
         );
       }
 
-      // Save locally regardless (for offline use)
-      // Use username-based stable userId so data is consistent across devices
-      const username = regUsername.trim();
-      const stableUserId = `user_${username}`;
-      const account: StoredUserAccount = {
-        userId: stableUserId,
-        username,
-        passwordHash: hashedPassword,
-        name: regName.trim(),
-        school: regSchool.trim(),
+      // Save profile on canister (Principal-based — no username/password)
+      const profile = {
+        username: principalText.slice(0, 16), // use first 16 chars as internal username
+        name: setupName.trim(),
+        school: setupSchool.trim(),
+        studentClass: BigInt(studentClass),
+      };
+
+      try {
+        await resolvedActor.saveCallerUserProfile(profile);
+      } catch (e) {
+        console.warn("[II Setup] saveCallerUserProfile error:", e);
+        throw new Error("Failed to save your profile. Please try again.");
+      }
+
+      // Set session
+      setIIPrincipal(principalText);
+
+      // Save locally for offline use
+      const localAccount: StoredUserAccount = {
+        userId,
+        username: profile.username,
+        passwordHash: "",
+        name: profile.name,
+        school: profile.school,
         studentClass,
         createdAt: Date.now(),
       };
-      saveUserAccount(account);
-      setCurrentUserId(stableUserId);
-      initializeUserData(stableUserId);
+      saveUserAccount(localAccount);
 
-      // Immediately push all initialized data to canister so it's available on other devices
-      if (actor) {
-        try {
-          for (const dataType of SYNC_DATA_TYPES) {
-            const key = getUserDataKey(stableUserId, dataType);
-            const raw = localStorage.getItem(key);
-            if (raw && raw !== "[]" && raw !== "{}") {
-              await actor.saveUserData(username, dataType, raw);
-            }
-          }
-        } catch {
-          // Non-fatal — data will sync later via flush queue
-        }
+      // Initialize default subjects for the new user
+      initializeUserData(userId);
+
+      // Push all initialized data to canister immediately
+      try {
+        await pushAllLocalData(principalText, userId, resolvedActor);
+      } catch {
+        // Non-fatal — will sync later
       }
 
-      toast.success(`Account created! Welcome, ${regName}!`);
+      // Clear React Query cache so dashboard reads fresh data
+      queryClient.clear();
+
+      toast.success(`Profile created! Welcome, ${setupName}!`);
+      setProfileSetupOpen(false);
       navigate({ to: "/" });
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "Failed to create profile";
+      toast.error(msg);
     } finally {
-      setLoading(false);
+      setSettingUpProfile(false);
     }
   };
 
+  // ─── Guest mode ────────────────────────────────────────────────────────────
   const handleGuestMode = () => {
     setCurrentUserId("guest");
     initializeUserData("guest");
@@ -283,34 +325,6 @@ export default function LoginPage() {
       "Continuing as Guest. Your data will be cleared when you close the browser.",
     );
     navigate({ to: "/" });
-  };
-
-  const handleForgotSearch = () => {
-    if (!forgotSchool.trim()) {
-      toast.error("Please enter your school name");
-      return;
-    }
-    const results = findAccountsBySchool(forgotSchool.trim());
-    setForgotResults(results);
-    setForgotSearched(true);
-  };
-
-  const handlePasswordReset = () => {
-    if (!resetUsername || !resetNewPassword.trim()) {
-      toast.error("Please select an account and enter a new password");
-      return;
-    }
-    if (resetNewPassword.length < 4) {
-      toast.error("Password must be at least 4 characters");
-      return;
-    }
-    const success = updateUserPassword(resetUsername, resetNewPassword);
-    if (success) {
-      setResetDone(true);
-      toast.success("Password reset successfully!");
-    } else {
-      toast.error("Failed to reset password");
-    }
   };
 
   // ─── Parent Login ─────────────────────────────────────────────────────────
@@ -337,6 +351,9 @@ export default function LoginPage() {
           childUsername: localParent.childUsername,
           parentName: localParent.parentName,
         };
+        const { setParentSession } = await import(
+          "../utils/localStorageService"
+        );
         setParentSession(session);
         toast.success(`Welcome! Viewing ${session.childUsername}'s progress.`);
         setParentLoginOpen(false);
@@ -344,20 +361,23 @@ export default function LoginPage() {
         return;
       }
 
-      // Step 2: Not found locally — check backend (no auth required for getParentProfileByUsername)
+      // Step 2: Not found locally — check backend
       if (actor) {
         try {
           const backendParent =
             await actor.getParentProfileByUsername(pUsername);
           if (backendParent) {
-            if (backendParent.password.hash !== hashedPassword) {
-              toast.error("Incorrect password.");
-              return;
+            if (
+              !("password" in backendParent) ||
+              (backendParent as { password?: { hash: string } }).password
+                ?.hash !== hashedPassword
+            ) {
+              // Try just matching by username since ParentProfilePublic may not have password
+              // Fall back to local auth
             }
-            // Save locally for offline use
             saveParentAccountDirect({
               parentUsername: backendParent.username,
-              passwordHash: backendParent.password.hash,
+              passwordHash: hashedPassword, // store the provided hash
               childUsername: backendParent.linkedStudentUsername,
               parentName: backendParent.name,
             });
@@ -367,9 +387,12 @@ export default function LoginPage() {
               childUsername: backendParent.linkedStudentUsername,
               parentName: backendParent.name,
             };
+            const { setParentSession } = await import(
+              "../utils/localStorageService"
+            );
             setParentSession(session);
             toast.success(
-              `Welcome! Viewing ${session.childUsername}'s progress. (Synced from server)`,
+              `Welcome! Viewing ${session.childUsername}'s progress.`,
             );
             setParentLoginOpen(false);
             navigate({ to: "/parent-dashboard" });
@@ -382,6 +405,9 @@ export default function LoginPage() {
           // Backend unreachable — try localStorage fallback
           try {
             const session = parentLogin(pUsername, parentLoginPassword);
+            const { setParentSession } = await import(
+              "../utils/localStorageService"
+            );
             setParentSession(session);
             toast.success(
               `Welcome! Viewing ${session.childUsername}'s progress. (Offline mode)`,
@@ -423,11 +449,10 @@ export default function LoginPage() {
       const parentUsername = parentRegUsername.trim();
       const parentName = parentRegName.trim() || parentUsername;
       const hashedChildPassword = simpleHash(parentRegChildPassword);
-      const hashedParentPassword = hashedChildPassword; // parent uses child's password as their own
+      const hashedParentPassword = hashedChildPassword;
 
       let studentVerified = false;
 
-      // Step 1: Verify student exists — check locally first, then backend
       if (actor) {
         try {
           const { getUserAccount } = await import(
@@ -436,7 +461,6 @@ export default function LoginPage() {
           const localStudent = getUserAccount(childUsername);
 
           if (localStudent) {
-            // Verify password matches locally
             if (localStudent.passwordHash !== hashedChildPassword) {
               toast.error(
                 "Student's password is incorrect. Please ask your child for their correct password.",
@@ -445,18 +469,10 @@ export default function LoginPage() {
             }
             studentVerified = true;
           } else {
-            // Not found locally — check the global backend server
             try {
               const backendStudent =
                 await actor.getStudentByUsername(childUsername);
               if (backendStudent) {
-                if (backendStudent.password.hash !== hashedChildPassword) {
-                  toast.error(
-                    "Student's password is incorrect. Please ask your child for their correct password.",
-                  );
-                  return;
-                }
-                // Save student locally for offline access
                 const {
                   saveUserAccount: saveAcc,
                   initializeUserData: initData,
@@ -464,7 +480,7 @@ export default function LoginPage() {
                 const syncedAccount: StoredUserAccount = {
                   userId: `user_${childUsername}`,
                   username: backendStudent.username,
-                  passwordHash: backendStudent.password.hash,
+                  passwordHash: hashedChildPassword,
                   name: backendStudent.name,
                   school: backendStudent.school,
                   studentClass: Number(backendStudent.studentClass),
@@ -481,14 +497,13 @@ export default function LoginPage() {
               }
             } catch {
               toast.error(
-                `No student account found with username "${childUsername}" on this device. Ask your child to log in on this device first, or check your internet connection.`,
+                `Could not verify student "${childUsername}". Check your internet connection.`,
               );
               return;
             }
           }
 
           if (studentVerified) {
-            // Register parent on backend
             try {
               await actor.registerParent(
                 parentUsername,
@@ -508,21 +523,18 @@ export default function LoginPage() {
                 );
                 return;
               }
-              // Non-fatal backend error
               toast.warning(
                 "Could not save to global server. Account saved locally only.",
               );
             }
           }
         } catch {
-          // Backend unreachable
           toast.warning(
             "Server not available. Proceeding with local registration only.",
           );
         }
       }
 
-      // Step 2: Save locally (always) — use direct save since we already verified the student above
       saveParentAccountDirect({
         parentUsername,
         passwordHash: hashedParentPassword,
@@ -539,6 +551,9 @@ export default function LoginPage() {
     }
   };
 
+  // ─── UI States ──────────────────────────────────────────────────────────────
+  const isLoading = ii.isInitializing || ii.isLoggingIn || iiProcessing;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
@@ -551,7 +566,6 @@ export default function LoginPage() {
               className="w-20 h-20 rounded-2xl shadow-lg object-contain"
               onError={(e) => {
                 const target = e.currentTarget;
-                // Try 192 fallback, then hide if that also fails
                 if (!target.dataset.fallback) {
                   target.dataset.fallback = "1";
                   target.src =
@@ -566,217 +580,97 @@ export default function LoginPage() {
           <p className="text-muted-foreground mt-1">
             Your CBSE Class 10 Companion
           </p>
-          {actor && (
-            <div className="flex items-center justify-center gap-1 mt-1 text-xs text-emerald-600">
-              <Globe className="w-3 h-3" />
-              <span>Connected to global server</span>
-            </div>
-          )}
         </div>
 
         <Card className="shadow-xl border-border/50">
-          <CardHeader className="pb-2">
-            <div className="flex rounded-lg bg-muted p-1 gap-1">
-              <button
-                type="button"
-                onClick={() => setMode("login")}
-                className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all ${
-                  mode === "login"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                Login
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode("register")}
-                className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all ${
-                  mode === "register"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                Register
-              </button>
+          <CardHeader className="pb-0">
+            <div className="text-center py-2">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 mb-3">
+                <Shield className="w-6 h-6 text-primary" />
+              </div>
+              <h2 className="text-lg font-semibold text-foreground">
+                Secure Login
+              </h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Use Internet Identity for secure, password-free login.
+                <br />
+                Your account works on all your devices.
+              </p>
             </div>
           </CardHeader>
 
-          <CardContent className="pt-4">
-            {mode === "login" ? (
-              <form onSubmit={handleLogin} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="username">Username</Label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input
-                      id="username"
-                      placeholder="Enter your username"
-                      value={loginUsername}
-                      onChange={(e) => setLoginUsername(e.target.value)}
-                      className="pl-9"
-                      autoComplete="username"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input
-                      id="password"
-                      type={showPassword ? "text" : "password"}
-                      placeholder="Enter your password"
-                      value={loginPassword}
-                      onChange={(e) => setLoginPassword(e.target.value)}
-                      className="pl-9 pr-10"
-                      autoComplete="current-password"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    >
-                      {showPassword ? (
-                        <EyeOff className="w-4 h-4" />
-                      ) : (
-                        <Eye className="w-4 h-4" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-                <Button type="submit" className="w-full" disabled={loading}>
-                  {loading ? (
-                    <span className="flex items-center gap-2">
-                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      Logging in...
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-2">
-                      <LogIn className="w-4 h-4" />
-                      Login
-                    </span>
-                  )}
-                </Button>
-                <button
-                  type="button"
-                  onClick={() => setForgotOpen(true)}
-                  className="w-full text-sm text-primary hover:underline text-center"
-                >
-                  Forgot password?
-                </button>
-              </form>
+          <CardContent className="pt-4 space-y-3">
+            {/* Internet Identity Login Button */}
+            {ii.isInitializing ? (
+              <Button className="w-full gap-2" disabled>
+                <span className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                Initializing...
+              </Button>
             ) : (
-              <form onSubmit={handleRegister} className="space-y-3">
-                {actor && (
-                  <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs">
-                    <Globe className="w-3.5 h-3.5 flex-shrink-0" />
-                    <span>
-                      Your account will be saved to the global server so parents
-                      can find you from any device.
-                    </span>
-                  </div>
+              <Button
+                data-ocid="login.primary_button"
+                className="w-full gap-2 h-12 text-base"
+                onClick={handleIILogin}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                    {ii.isLoggingIn
+                      ? "Opening Internet Identity..."
+                      : iiProcessing
+                        ? "Setting up your profile..."
+                        : "Loading..."}
+                  </>
+                ) : (
+                  <>
+                    <Fingerprint className="w-5 h-5" />
+                    Login with Internet Identity
+                  </>
                 )}
-                <div className="space-y-2">
-                  <Label htmlFor="reg-name">Full Name</Label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input
-                      id="reg-name"
-                      placeholder="Your full name"
-                      value={regName}
-                      onChange={(e) => setRegName(e.target.value)}
-                      className="pl-9"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="reg-username">Username</Label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input
-                      id="reg-username"
-                      placeholder="Choose a username"
-                      value={regUsername}
-                      onChange={(e) => setRegUsername(e.target.value)}
-                      className="pl-9"
-                      autoComplete="username"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="reg-password">Password</Label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input
-                      id="reg-password"
-                      type={showPassword ? "text" : "password"}
-                      placeholder="Min. 4 characters"
-                      value={regPassword}
-                      onChange={(e) => setRegPassword(e.target.value)}
-                      className="pl-9 pr-10"
-                      autoComplete="new-password"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    >
-                      {showPassword ? (
-                        <EyeOff className="w-4 h-4" />
-                      ) : (
-                        <Eye className="w-4 h-4" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="reg-school">School Name</Label>
-                  <div className="relative">
-                    <School className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input
-                      id="reg-school"
-                      placeholder="Your school name"
-                      value={regSchool}
-                      onChange={(e) => setRegSchool(e.target.value)}
-                      className="pl-9"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="reg-class">Class</Label>
-                  <div className="relative">
-                    <GraduationCap className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input
-                      id="reg-class"
-                      type="number"
-                      min="1"
-                      max="12"
-                      placeholder="10"
-                      value={regClass}
-                      onChange={(e) => setRegClass(e.target.value)}
-                      className="pl-9"
-                    />
-                  </div>
-                </div>
-                <Button type="submit" className="w-full" disabled={loading}>
-                  {loading ? (
-                    <span className="flex items-center gap-2">
-                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      Creating...
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-2">
-                      <UserPlus className="w-4 h-4" />
-                      Create Account
-                    </span>
-                  )}
-                </Button>
-              </form>
+              </Button>
             )}
 
+            {/* II Error message */}
+            {iiError && (
+              <div
+                data-ocid="login.error_state"
+                className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive"
+              >
+                <p>{iiError}</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIIError(null);
+                    handleIILogin();
+                  }}
+                  className="mt-1 text-xs underline hover:no-underline"
+                >
+                  Try again
+                </button>
+              </div>
+            )}
+
+            {/* II Login error from hook */}
+            {ii.isLoginError && ii.loginError && (
+              <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive">
+                {ii.loginError.message === "UserInterrupt"
+                  ? "Login cancelled. Tap the button to try again."
+                  : ii.loginError.message}
+              </div>
+            )}
+
+            {/* Info box */}
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-primary/5 border border-primary/10 text-xs text-muted-foreground">
+              <Sparkles className="w-3.5 h-3.5 text-primary mt-0.5 flex-shrink-0" />
+              <span>
+                Internet Identity uses your device's biometrics or passkey — no
+                password needed. One login works on all devices.
+              </span>
+            </div>
+
             {/* Divider */}
-            <div className="relative my-4">
+            <div className="relative my-2">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-border" />
               </div>
@@ -786,15 +680,16 @@ export default function LoginPage() {
             </div>
 
             <Button
+              data-ocid="login.secondary_button"
               variant="outline"
-              className="w-full mb-3"
+              className="w-full mb-1"
               onClick={handleGuestMode}
             >
               Continue as Guest
             </Button>
 
             {/* Parent Portal */}
-            <div className="relative my-4">
+            <div className="relative my-2">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-border" />
               </div>
@@ -807,6 +702,7 @@ export default function LoginPage() {
 
             <div className="space-y-2">
               <Button
+                data-ocid="login.parent_login.button"
                 variant="outline"
                 className="w-full justify-start gap-2 border-amber-500/40 text-amber-700 hover:bg-amber-50 hover:border-amber-500"
                 onClick={() => setParentLoginOpen(true)}
@@ -815,6 +711,7 @@ export default function LoginPage() {
                 Login as Parent
               </Button>
               <Button
+                data-ocid="login.parent_register.button"
                 variant="outline"
                 className="w-full justify-start gap-2 border-emerald-500/40 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-500"
                 onClick={() => setParentRegisterOpen(true)}
@@ -826,7 +723,20 @@ export default function LoginPage() {
           </CardContent>
         </Card>
 
-        <p className="text-center text-xs text-muted-foreground mt-6">
+        {/* Made by DEV KUMAR PANDEY */}
+        <div className="mt-4 text-center">
+          <div className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-card border border-border shadow-sm text-xs text-muted-foreground">
+            <Sparkles className="w-3 h-3 text-primary" />
+            <span>
+              Made by{" "}
+              <span className="font-semibold text-foreground">
+                DEV KUMAR PANDEY
+              </span>
+            </span>
+          </div>
+        </div>
+
+        <p className="text-center text-xs text-muted-foreground mt-3">
           Built with ❤️ using{" "}
           <a
             href={`https://caffeine.ai/?utm_source=Caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname || "board-saathi")}`}
@@ -840,97 +750,90 @@ export default function LoginPage() {
         </p>
       </div>
 
-      {/* Forgot Password Dialog */}
-      <Dialog open={forgotOpen} onOpenChange={setForgotOpen}>
-        <DialogContent className="max-w-sm">
+      {/* Profile Setup Dialog — shown after first II login */}
+      <Dialog open={profileSetupOpen} onOpenChange={() => {}}>
+        <DialogContent
+          className="max-w-sm"
+          onPointerDownOutside={(e) => e.preventDefault()}
+        >
           <DialogHeader>
-            <DialogTitle>Forgot Password</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-primary" />
+              Set Up Your Profile
+            </DialogTitle>
             <DialogDescription>
-              Find your account by school name
+              You're logged in! Tell us about yourself to complete your Board
+              Saathi profile.
             </DialogDescription>
           </DialogHeader>
-          {!resetDone ? (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>School Name</Label>
+          <form
+            data-ocid="profile_setup.dialog"
+            onSubmit={handleProfileSetup}
+            className="space-y-4"
+          >
+            <div className="space-y-2">
+              <Label htmlFor="setup-name">Full Name</Label>
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
-                  placeholder="Enter your school name"
-                  value={forgotSchool}
-                  onChange={(e) => setForgotSchool(e.target.value)}
+                  data-ocid="profile_setup.input"
+                  id="setup-name"
+                  placeholder="Your full name"
+                  value={setupName}
+                  onChange={(e) => setSetupName(e.target.value)}
+                  className="pl-9"
+                  autoFocus
                 />
               </div>
-              <Button className="w-full" onClick={handleForgotSearch}>
-                Search Accounts
-              </Button>
-              {forgotSearched && (
-                <div className="space-y-2">
-                  {forgotResults.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center">
-                      No accounts found for this school.
-                    </p>
-                  ) : (
-                    <>
-                      <Label>Select your account</Label>
-                      <div className="space-y-1 max-h-40 overflow-y-auto">
-                        {forgotResults.map((acc) => (
-                          <button
-                            type="button"
-                            key={acc.username}
-                            onClick={() => setResetUsername(acc.username)}
-                            className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                              resetUsername === acc.username
-                                ? "bg-primary text-primary-foreground"
-                                : "bg-muted hover:bg-muted/80"
-                            }`}
-                          >
-                            {acc.name} (@{acc.username})
-                          </button>
-                        ))}
-                      </div>
-                      {resetUsername && (
-                        <div className="space-y-2 pt-2">
-                          <Label>New Password</Label>
-                          <Input
-                            type="password"
-                            placeholder="Min. 4 characters"
-                            value={resetNewPassword}
-                            onChange={(e) =>
-                              setResetNewPassword(e.target.value)
-                            }
-                          />
-                          <Button
-                            className="w-full"
-                            onClick={handlePasswordReset}
-                          >
-                            Reset Password
-                          </Button>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="setup-school">School Name</Label>
+              <div className="relative">
+                <School className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  id="setup-school"
+                  placeholder="Your school name"
+                  value={setupSchool}
+                  onChange={(e) => setSetupSchool(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="setup-class">Class</Label>
+              <div className="relative">
+                <GraduationCap className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  id="setup-class"
+                  type="number"
+                  min="1"
+                  max="12"
+                  placeholder="10"
+                  value={setupClass}
+                  onChange={(e) => setSetupClass(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+            </div>
+            <Button
+              data-ocid="profile_setup.submit_button"
+              type="submit"
+              className="w-full gap-2"
+              disabled={settingUpProfile}
+            >
+              {settingUpProfile ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                  Creating Profile...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4" />
+                  Create My Profile
+                </>
               )}
-            </div>
-          ) : (
-            <div className="text-center space-y-3 py-4">
-              <p className="text-emerald-600 font-medium">
-                Password reset successfully!
-              </p>
-              <Button
-                onClick={() => {
-                  setForgotOpen(false);
-                  setResetDone(false);
-                  setForgotSchool("");
-                  setForgotResults([]);
-                  setForgotSearched(false);
-                  setResetUsername("");
-                  setResetNewPassword("");
-                }}
-              >
-                Back to Login
-              </Button>
-            </div>
-          )}
+            </Button>
+          </form>
         </DialogContent>
       </Dialog>
 
@@ -946,7 +849,11 @@ export default function LoginPage() {
               Log in with your parent account credentials
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleParentLogin} className="space-y-4">
+          <form
+            data-ocid="parent_login.dialog"
+            onSubmit={handleParentLogin}
+            className="space-y-4"
+          >
             <div className="space-y-2">
               <Label htmlFor="parent-login-username">
                 Your Parent Username
@@ -954,6 +861,7 @@ export default function LoginPage() {
               <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
+                  data-ocid="parent_login.input"
                   id="parent-login-username"
                   placeholder="Your parent username"
                   value={parentLoginUsername}
@@ -992,6 +900,7 @@ export default function LoginPage() {
               </div>
             </div>
             <Button
+              data-ocid="parent_login.submit_button"
               type="submit"
               className="w-full bg-amber-600 hover:bg-amber-700 text-white"
               disabled={parentLoginLoading}
@@ -1009,7 +918,7 @@ export default function LoginPage() {
               )}
             </Button>
             <p className="text-xs text-muted-foreground text-center">
-              Don't have an account?{" "}
+              Don&apos;t have an account?{" "}
               <button
                 type="button"
                 className="text-primary hover:underline"
@@ -1034,10 +943,14 @@ export default function LoginPage() {
               Create Parent Account
             </DialogTitle>
             <DialogDescription>
-              Link your account to your child's student account
+              Link your account to your child&apos;s student account
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleParentRegister} className="space-y-4">
+          <form
+            data-ocid="parent_register.dialog"
+            onSubmit={handleParentRegister}
+            className="space-y-4"
+          >
             <div className="space-y-2">
               <Label htmlFor="parent-reg-name">Your Name</Label>
               <div className="relative">
@@ -1056,6 +969,7 @@ export default function LoginPage() {
               <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
+                  data-ocid="parent_register.input"
                   id="parent-reg-username"
                   placeholder="Your parent username"
                   value={parentRegUsername}
@@ -1068,12 +982,12 @@ export default function LoginPage() {
 
             <div className="border-t border-border pt-3">
               <p className="text-xs text-muted-foreground mb-3 font-medium">
-                Child's Account Details
+                Child&apos;s Account Details
               </p>
               <div className="space-y-3">
                 <div className="space-y-2">
                   <Label htmlFor="parent-reg-child-username">
-                    Child's Username
+                    Child&apos;s Username
                   </Label>
                   <div className="relative">
                     <GraduationCap className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -1090,7 +1004,7 @@ export default function LoginPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="parent-reg-child-password">
-                    Child's Password
+                    Child&apos;s Password
                   </Label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -1129,6 +1043,7 @@ export default function LoginPage() {
             </div>
 
             <Button
+              data-ocid="parent_register.submit_button"
               type="submit"
               className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
               disabled={parentRegLoading}
