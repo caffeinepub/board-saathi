@@ -165,6 +165,10 @@ export interface backendInterface {
     getFeedbackForStudent(student: Principal): Promise<Array<StudentFeedback>>;
     getFeedbackFromParent(parent: Principal): Promise<Array<StudentFeedback>>;
     getMessages(user: Principal): Promise<[Array<ChatMessage>, boolean]>;
+    /**
+     * / Get data for the caller's principal by dataType
+     */
+    getMyData(dataType: string): Promise<string | null>;
     getParentByUsername(username: string): Promise<ParentProfilePublic | null>;
     getParentProfileByUsername(username: string): Promise<ParentProfilePublic | null>;
     getPresence(user: Principal): Promise<PresenceInfo>;
@@ -177,6 +181,10 @@ export interface backendInterface {
     getUserProfile(user: Principal): Promise<UserProfile | null>;
     isCallerAdmin(): Promise<boolean>;
     /**
+     * / List all data types stored for the caller's principal
+     */
+    listMyDataTypes(): Promise<Array<string>>;
+    /**
      * / List all data types stored for a given username - only owner or admin can list
      */
     listUserDataTypes(username: string): Promise<Array<string>>;
@@ -184,6 +192,10 @@ export interface backendInterface {
     registerParent(username: string, name: string, linkedStudentUsername: string, password: string): Promise<void>;
     registerStudent(username: string, name: string, school: string, studentClass: bigint, password: string): Promise<void>;
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
+    /**
+     * / Save data for the caller's principal under a specific dataType
+     */
+    saveMyData(dataType: string, jsonBlob: string): Promise<void>;
     /**
      * / Save user data (username + dataType) JSON blob - only owner or admin can save
      */
@@ -426,32 +438,46 @@ export class Backend implements backendInterface {
             ];
         }
     }
+    async getMyData(arg0: string): Promise<string | null> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getMyData(arg0);
+                return from_candid_opt_n20(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getMyData(arg0);
+            return from_candid_opt_n20(this._uploadFile, this._downloadFile, result);
+        }
+    }
     async getParentByUsername(arg0: string): Promise<ParentProfilePublic | null> {
         if (this.processError) {
             try {
                 const result = await this.actor.getParentByUsername(arg0);
-                return from_candid_opt_n20(this._uploadFile, this._downloadFile, result);
+                return from_candid_opt_n21(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getParentByUsername(arg0);
-            return from_candid_opt_n20(this._uploadFile, this._downloadFile, result);
+            return from_candid_opt_n21(this._uploadFile, this._downloadFile, result);
         }
     }
     async getParentProfileByUsername(arg0: string): Promise<ParentProfilePublic | null> {
         if (this.processError) {
             try {
                 const result = await this.actor.getParentProfileByUsername(arg0);
-                return from_candid_opt_n20(this._uploadFile, this._downloadFile, result);
+                return from_candid_opt_n21(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getParentProfileByUsername(arg0);
-            return from_candid_opt_n20(this._uploadFile, this._downloadFile, result);
+            return from_candid_opt_n21(this._uploadFile, this._downloadFile, result);
         }
     }
     async getPresence(arg0: Principal): Promise<PresenceInfo> {
@@ -472,14 +498,14 @@ export class Backend implements backendInterface {
         if (this.processError) {
             try {
                 const result = await this.actor.getStudentByUsername(arg0);
-                return from_candid_opt_n21(this._uploadFile, this._downloadFile, result);
+                return from_candid_opt_n22(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getStudentByUsername(arg0);
-            return from_candid_opt_n21(this._uploadFile, this._downloadFile, result);
+            return from_candid_opt_n22(this._uploadFile, this._downloadFile, result);
         }
     }
     async getTypingStatus(arg0: Principal): Promise<boolean> {
@@ -500,14 +526,14 @@ export class Backend implements backendInterface {
         if (this.processError) {
             try {
                 const result = await this.actor.getUserData(arg0, arg1);
-                return from_candid_opt_n22(this._uploadFile, this._downloadFile, result);
+                return from_candid_opt_n20(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getUserData(arg0, arg1);
-            return from_candid_opt_n22(this._uploadFile, this._downloadFile, result);
+            return from_candid_opt_n20(this._uploadFile, this._downloadFile, result);
         }
     }
     async getUserProfile(arg0: Principal): Promise<UserProfile | null> {
@@ -535,6 +561,20 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.isCallerAdmin();
+            return result;
+        }
+    }
+    async listMyDataTypes(): Promise<Array<string>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.listMyDataTypes();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.listMyDataTypes();
             return result;
         }
     }
@@ -605,6 +645,20 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.saveCallerUserProfile(arg0);
+            return result;
+        }
+    }
+    async saveMyData(arg0: string, arg1: string): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.saveMyData(arg0, arg1);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.saveMyData(arg0, arg1);
             return result;
         }
     }
@@ -694,13 +748,13 @@ function from_candid__CaffeineStorageRefillResult_n4(_uploadFile: (file: Externa
 function from_candid_opt_n12(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_UserProfile]): UserProfile | null {
     return value.length === 0 ? null : value[0];
 }
-function from_candid_opt_n20(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_ParentProfilePublic]): ParentProfilePublic | null {
+function from_candid_opt_n20(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [string]): string | null {
     return value.length === 0 ? null : value[0];
 }
-function from_candid_opt_n21(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_StudentProfilePublic]): StudentProfilePublic | null {
+function from_candid_opt_n21(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_ParentProfilePublic]): ParentProfilePublic | null {
     return value.length === 0 ? null : value[0];
 }
-function from_candid_opt_n22(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [string]): string | null {
+function from_candid_opt_n22(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_StudentProfilePublic]): StudentProfilePublic | null {
     return value.length === 0 ? null : value[0];
 }
 function from_candid_opt_n6(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [boolean]): boolean | null {

@@ -1,10 +1,15 @@
 /**
  * Sync Service — bridges localStorage (offline cache) and the Motoko canister (persistent global storage).
  *
+ * ARCHITECTURE (v2 — Principal-based):
+ *  - All canister calls use saveMyData/getMyData/listMyDataTypes — keyed by caller's Principal.
+ *  - No username matching, no ownership errors, no "Unauthorized" surprises.
+ *  - This is the fix for the cross-device sync bug where username prefix mismatch caused
+ *    every saveUserData call to silently fail.
+ *
  * Design rules:
  *  - No React hooks. Pure functions/class only.
  *  - Never throws. All errors are caught and logged.
- *  - userId format in localStorage is "user_<username>". Canister calls use plain "username".
  *  - Queue items are persisted to localStorage under "bs_sync_queue" so they survive refreshes.
  */
 
@@ -15,7 +20,6 @@ import type { backendInterface } from "../backend";
 export type SyncStatus = "synced" | "pending" | "pulling" | "offline";
 
 interface SyncQueueItem {
-  username: string;
   dataType: string;
   data: string;
   timestamp: number;
@@ -23,10 +27,10 @@ interface SyncQueueItem {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const SYNC_QUEUE_KEY = "bs_sync_queue";
+const SYNC_QUEUE_KEY = "bs_sync_queue_v2"; // new key — clears old broken queue
 const LAST_SYNC_KEY = "bs_last_sync";
 
-// ─── Pulling state (set during login data pull) ───────────────────────────────
+// ─── Pulling state ────────────────────────────────────────────────────────────
 let _isPulling = false;
 
 export function setIsPulling(v: boolean): void {
@@ -86,10 +90,8 @@ function saveQueue(queue: SyncQueueItem[]): void {
 
 function enqueue(item: SyncQueueItem): void {
   const queue = getQueue();
-  // Replace existing entry for same username+dataType with newer one
-  const idx = queue.findIndex(
-    (q) => q.username === item.username && q.dataType === item.dataType,
-  );
+  // Replace existing entry for same dataType with newer one
+  const idx = queue.findIndex((q) => q.dataType === item.dataType);
   if (idx >= 0) {
     queue[idx] = item;
   } else {
@@ -98,41 +100,14 @@ function enqueue(item: SyncQueueItem): void {
   saveQueue(queue);
 }
 
-// ─── Username helpers ─────────────────────────────────────────────────────────
+// ─── localStorage key helper ──────────────────────────────────────────────────
 
 /**
- * Strips the userId prefix to get the plain identifier for canister calls.
- *
- * - "principal_<principalText>" → "<principalText>"  (Internet Identity)
- * - "user_<username>"           → "<username>"         (legacy username/password)
- * - anything else               → returned as-is
+ * Returns the localStorage key for a given userId and dataType.
+ * userId is in the format "principal_<principalText>" for II users.
  */
-function toUsername(userId: string): string {
-  if (userId.startsWith("principal_")) {
-    return userId.slice(10); // strip "principal_" → plain Principal text
-  }
-  if (userId.startsWith("user_")) {
-    return userId.slice(5); // strip "user_" → plain username
-  }
-  return userId;
-}
-
-/**
- * Returns the localStorage key for a given (stripped) identifier and dataType.
- *
- * Key format mirrors getUserDataKey(userId, dataType) = "bs_" + userId + "_" + dataType:
- *   - II users:     username = principalText  → "bs_principal_<principalText>_<dataType>"
- *   - Legacy users: username = plain username → "bs_user_<username>_<dataType>"
- *
- * Principal IDs always contain dashes (e.g. "2vxsx-fae"), usernames don't.
- */
-function localKey(username: string, dataType: string): string {
-  // If the identifier looks like a Principal ID (contains dashes), it came from II
-  if (username.includes("-")) {
-    return `bs_principal_${username}_${dataType}`;
-  }
-  // Legacy username format
-  return `bs_user_${username}_${dataType}`;
+function localKey(userId: string, dataType: string): string {
+  return `bs_${userId}_${dataType}`;
 }
 
 // ─── Core sync functions ──────────────────────────────────────────────────────
@@ -150,9 +125,7 @@ export function scheduleSync(
   // Don't sync guest data
   if (userId === "guest") return;
 
-  const username = toUsername(userId);
   const item: SyncQueueItem = {
-    username,
     dataType,
     data,
     timestamp: Date.now(),
@@ -162,31 +135,31 @@ export function scheduleSync(
 
   // Attempt immediate flush if conditions are met
   if (actor && navigator.onLine) {
-    flushQueue(username, actor).catch(() => {
+    flushQueue(actor).catch(() => {
       // Queue will be flushed later on reconnect
     });
   }
 }
 
 /**
- * Fetches all data types from the canister for a given username and writes them
- * into localStorage. Remote (canister) data is always treated as source of truth
- * during login sync — this ensures a fresh device always gets the real profile.
+ * Fetches all data types from the canister for the authenticated caller.
+ * Uses saveMyData/getMyData which key on the caller's Principal — no username mismatch.
+ * Remote (canister) data is always treated as source of truth during login pull.
  */
 export async function pullAllData(
-  username: string,
+  userId: string,
   actor: backendInterface,
 ): Promise<void> {
-  if (!username || !actor) return;
+  if (!userId || !actor) return;
 
   setIsPulling(true);
   try {
-    // First, get the list of data types stored on the canister
+    // Get the list of data types stored on the canister for this Principal
     let storedTypes: string[] = [];
     try {
-      storedTypes = await actor.listUserDataTypes(username);
+      storedTypes = await actor.listMyDataTypes();
     } catch (e) {
-      console.warn("[SyncService] listUserDataTypes failed:", e);
+      console.warn("[SyncService] listMyDataTypes failed:", e);
       // Fall back to pulling all known types
       storedTypes = [...SYNC_DATA_TYPES];
     }
@@ -194,20 +167,18 @@ export async function pullAllData(
     const typesToPull =
       storedTypes.length > 0 ? storedTypes : [...SYNC_DATA_TYPES];
 
-    // Fetch all data types in parallel
+    // Fetch all data types in parallel using getMyData (Principal-keyed, always works)
     const results = await Promise.allSettled(
       typesToPull.map(async (dataType) => {
         try {
-          const remote = await actor.getUserData(username, dataType);
-          // Only skip null/undefined/empty string — empty arrays [] and objects {} ARE valid data
+          const remote = await actor.getMyData(dataType);
+          const key = localKey(userId, dataType);
+
           if (remote !== null && remote !== undefined && remote.trim() !== "") {
-            // Validate it's parseable JSON before storing
-            const key = localKey(username, dataType);
             try {
               const parsed = JSON.parse(remote);
-              // For arrays: prefer canister data if it has more items than local,
-              // otherwise prefer canister data (it's the authoritative server).
-              // Exception: if canister has [] but local has real data, keep local AND push local.
+
+              // For arrays: if canister has empty [] but local has real data, push local up
               if (Array.isArray(parsed) && parsed.length === 0) {
                 const existing = localStorage.getItem(key);
                 if (existing) {
@@ -217,41 +188,43 @@ export async function pullAllData(
                       Array.isArray(existingParsed) &&
                       existingParsed.length > 0
                     ) {
-                      // Local has real data, canister is empty — push local to canister
                       console.info(
                         `[SyncService] Canister empty for ${dataType}, pushing local data up`,
                       );
-                      actor
-                        .saveUserData(username, dataType, existing)
-                        .catch(() => {});
-                      // Keep local data, don't overwrite with empty canister
+                      // Push local to canister in background
+                      actor.saveMyData(dataType, existing).catch(() => {});
+                      // Keep local data
                       return;
                     }
                   } catch {
-                    // ignore parse error
+                    // ignore
                   }
                 }
               }
-              // Valid JSON — always overwrite local (canister is source of truth on login)
+
+              // Valid JSON — overwrite local with canister data (source of truth)
               localStorage.setItem(key, remote);
             } catch {
-              // If parse fails, still store it as-is
+              // Still store even if parse fails
               localStorage.setItem(key, remote);
             }
           } else {
-            // Canister has no data for this type — check if we have local data to push up
-            const key = localKey(username, dataType);
+            // Canister has no data — check if we have local data to push up
             const existing = localStorage.getItem(key);
             if (existing && existing.trim() !== "") {
               try {
                 const parsed = JSON.parse(existing);
-                if (Array.isArray(parsed) && parsed.length > 0) {
+                if (
+                  (Array.isArray(parsed) && parsed.length > 0) ||
+                  (!Array.isArray(parsed) &&
+                    typeof parsed === "object" &&
+                    parsed !== null &&
+                    Object.keys(parsed).length > 0)
+                ) {
                   console.info(
                     `[SyncService] Canister missing ${dataType}, pushing local data up`,
                   );
-                  actor
-                    .saveUserData(username, dataType, existing)
-                    .catch(() => {});
+                  actor.saveMyData(dataType, existing).catch(() => {});
                 }
               } catch {
                 // ignore
@@ -264,13 +237,11 @@ export async function pullAllData(
       }),
     );
 
-    // Count successes
     const succeeded = results.filter((r) => r.status === "fulfilled").length;
     console.info(
-      `[SyncService] Pulled ${succeeded}/${typesToPull.length} data types for "${username}"`,
+      `[SyncService] Pulled ${succeeded}/${typesToPull.length} data types`,
     );
 
-    // Update last sync timestamp
     localStorage.setItem(LAST_SYNC_KEY, Date.now().toString());
   } catch (e) {
     console.warn("[SyncService] pullAllData failed:", e);
@@ -280,29 +251,23 @@ export async function pullAllData(
 }
 
 /**
- * Pushes ALL local data types for a given username to the canister immediately.
- * Used at registration and manual sync — ensures canister has the latest copy
- * so other devices can pull it on login.
- *
- * @param username  plain username (no "user_" prefix)
- * @param userId    localStorage userId ("user_<username>")
- * @param actor     backend actor
+ * Pushes ALL local data types for a given userId to the canister immediately.
+ * Uses saveMyData — keyed by caller's Principal, always succeeds for the authenticated user.
  */
 export async function pushAllLocalData(
-  username: string,
   userId: string,
   actor: backendInterface,
 ): Promise<void> {
-  if (!username || !userId || !actor) return;
+  if (!userId || !actor) return;
 
   const results = await Promise.allSettled(
     SYNC_DATA_TYPES.map(async (dataType) => {
       try {
-        const key = localKey(username, dataType);
+        const key = localKey(userId, dataType);
         const raw = localStorage.getItem(key);
-        if (raw !== null && raw !== undefined) {
+        if (raw !== null && raw !== undefined && raw.trim() !== "") {
           // Push even empty arrays/objects — they represent valid state
-          await actor.saveUserData(username, dataType, raw);
+          await actor.saveMyData(dataType, raw);
         }
       } catch (e) {
         console.warn(`[SyncService] Failed to push ${dataType}:`, e);
@@ -312,62 +277,54 @@ export async function pushAllLocalData(
 
   const succeeded = results.filter((r) => r.status === "fulfilled").length;
   console.info(
-    `[SyncService] Pushed ${succeeded}/${SYNC_DATA_TYPES.length} data types for "${username}"`,
+    `[SyncService] Pushed ${succeeded}/${SYNC_DATA_TYPES.length} data types`,
   );
   localStorage.setItem(LAST_SYNC_KEY, Date.now().toString());
 }
 
 /**
- * Pushes all queued items to the canister for a given username.
- * Items are removed from the queue only after a successful upload.
+ * Pushes all queued items to the canister.
+ * Items are removed from the queue only after successful upload.
  */
-export async function flushQueue(
-  username: string,
-  actor: backendInterface,
-): Promise<void> {
-  if (!username || !actor || !navigator.onLine) return;
+export async function flushQueue(actor: backendInterface): Promise<void> {
+  if (!actor || !navigator.onLine) return;
 
   const queue = getQueue();
-  const userItems = queue.filter((item) => item.username === username);
-  if (userItems.length === 0) return;
+  if (queue.length === 0) return;
 
-  const remaining: SyncQueueItem[] = queue.filter(
-    (item) => item.username !== username,
-  );
   const failed: SyncQueueItem[] = [];
 
   await Promise.allSettled(
-    userItems.map(async (item) => {
+    queue.map(async (item) => {
       try {
-        await actor.saveUserData(item.username, item.dataType, item.data);
+        await actor.saveMyData(item.dataType, item.data);
       } catch (e) {
-        console.warn(
-          `[SyncService] Failed to push ${item.dataType} for "${item.username}":`,
-          e,
-        );
+        console.warn(`[SyncService] Failed to push ${item.dataType}:`, e);
         failed.push(item);
       }
     }),
   );
 
-  // Re-queue failed items
-  saveQueue([...remaining, ...failed]);
+  // Re-queue failed items only
+  saveQueue(failed);
 
   if (failed.length === 0) {
     localStorage.setItem(LAST_SYNC_KEY, Date.now().toString());
-    console.info(
-      `[SyncService] Flushed ${userItems.length} items for "${username}"`,
-    );
+    console.info(`[SyncService] Flushed ${queue.length} items`);
+    try {
+      window.dispatchEvent(new CustomEvent("bs:sync-status-changed"));
+    } catch {
+      // ignore
+    }
   } else {
     console.warn(
-      `[SyncService] ${failed.length}/${userItems.length} items failed to flush for "${username}"`,
+      `[SyncService] ${failed.length}/${queue.length} items failed to flush`,
     );
   }
 }
 
 /**
  * Removes queue items older than 1 hour — they are stale and will never succeed.
- * Called on startup to prevent the "Syncing…" indicator from being stuck forever.
  */
 export function pruneStaleQueue(): void {
   const queue = getQueue();
@@ -401,6 +358,11 @@ let _listenerRegistered = false;
 
 export function setGlobalActor(actor: backendInterface | null): void {
   _globalActor = actor;
+
+  // When actor becomes available, immediately flush any pending queue items
+  if (actor && navigator.onLine) {
+    flushQueue(actor).catch(() => {});
+  }
 }
 
 export function initDataChangeListener(): void {
@@ -414,4 +376,11 @@ export function initDataChangeListener(): void {
     const { userId, dataType, data } = e.detail;
     scheduleSync(userId, dataType, data, _globalActor);
   }) as EventListener);
+
+  // Flush queue when coming back online
+  window.addEventListener("online", () => {
+    if (_globalActor) {
+      flushQueue(_globalActor).catch(() => {});
+    }
+  });
 }

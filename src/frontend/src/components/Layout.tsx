@@ -107,22 +107,9 @@ export default function Layout() {
   }, []);
 
   // Keep syncService's global actor reference up to date.
-  // Also flush the pending sync queue immediately whenever the actor becomes
-  // available — this ensures any data saved while actor was null gets pushed.
+  // setGlobalActor internally flushes queue when actor becomes available.
   useEffect(() => {
     setGlobalActor(actor);
-    if (actor && navigator.onLine) {
-      const userId = getCurrentUserId();
-      if (userId && userId !== "guest") {
-        let username = userId;
-        if (userId.startsWith("principal_")) {
-          username = userId.slice(10);
-        } else if (userId.startsWith("user_")) {
-          username = userId.slice(5);
-        }
-        flushQueue(username, actor).catch(() => {});
-      }
-    }
   }, [actor]);
 
   // Track online/offline status and flush pending sync queue on reconnect
@@ -132,16 +119,7 @@ export default function Layout() {
       toast.success("Back online!", { duration: 3000 });
       // Auto-flush pending data to canister when connection returns
       if (actor) {
-        const userId = getCurrentUserId();
-        if (userId && userId !== "guest") {
-          let username = userId;
-          if (userId.startsWith("principal_")) {
-            username = userId.slice(10); // strip "principal_"
-          } else if (userId.startsWith("user_")) {
-            username = userId.slice(5); // strip "user_"
-          }
-          flushQueue(username, actor).catch(() => {});
-        }
+        flushQueue(actor).catch(() => {});
       }
     };
     const handleOffline = () => {

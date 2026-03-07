@@ -165,28 +165,35 @@ export default function LoginPage() {
           };
           saveUserAccount(localAccount);
 
-          // Step 1: Push any locally-pending data to canister FIRST.
-          // This ensures any subjects/chapters saved offline (queue not yet flushed)
-          // are uploaded before we pull — preventing overwrite of real data by stale canister state.
-          try {
-            const { pushAllLocalData: pushLocal } = await import(
-              "../utils/syncService"
-            );
-            await pushLocal(principalText, userId, resolvedActor);
-          } catch {
-            // Non-fatal — continue
-          }
-
-          // Step 2: Pull ALL data from canister — this is the source of truth on any device.
-          // We always pull and NEVER call initializeUserData for returning users,
-          // because that would overwrite real data (chapters, notes, etc.) with empty defaults.
+          // Pull ALL data from canister using Principal-keyed getMyData (always works).
+          // This is the source of truth on any device.
+          // We NEVER call initializeUserData for returning users — their data is on canister.
           const syncToast = toast.loading("Syncing your data from server...");
           try {
-            await pullAllData(principalText, resolvedActor);
+            await pullAllData(userId, resolvedActor);
             toast.dismiss(syncToast);
           } catch {
             toast.dismiss(syncToast);
             // Non-fatal — continue with cached local data
+          }
+
+          // After pull: if subjects are still empty (canister was empty), initialize defaults
+          // and push them up so next device gets them
+          try {
+            const { getSubjects, initializeUserData } = await import(
+              "../utils/localStorageService"
+            );
+            const subjects = getSubjects(userId);
+            if (subjects.length === 0) {
+              initializeUserData(userId);
+              // Push defaults to canister
+              const { pushAllLocalData: pushLocal } = await import(
+                "../utils/syncService"
+              );
+              pushLocal(userId, resolvedActor).catch(() => {});
+            }
+          } catch {
+            // Non-fatal
           }
 
           // DO NOT call initializeUserData for returning users — their data
@@ -295,9 +302,9 @@ export default function LoginPage() {
       // Initialize default subjects for the new user
       initializeUserData(userId);
 
-      // Push all initialized data to canister immediately
+      // Push all initialized data to canister immediately using new Principal-based method
       try {
-        await pushAllLocalData(principalText, userId, resolvedActor);
+        await pushAllLocalData(userId, resolvedActor);
       } catch {
         // Non-fatal — will sync later
       }

@@ -88,6 +88,10 @@ export interface _SERVICE {
   'getFeedbackForStudent' : ActorMethod<[Principal], Array<StudentFeedback>>,
   'getFeedbackFromParent' : ActorMethod<[Principal], Array<StudentFeedback>>,
   'getMessages' : ActorMethod<[Principal], [Array<ChatMessage>, boolean]>,
+  /**
+   * / Get data for the caller's principal by dataType
+   */
+  'getMyData' : ActorMethod<[string], [] | [string]>,
   'getParentByUsername' : ActorMethod<[string], [] | [ParentProfilePublic]>,
   'getParentProfileByUsername' : ActorMethod<
     [string],
@@ -103,6 +107,10 @@ export interface _SERVICE {
   'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,
   'isCallerAdmin' : ActorMethod<[], boolean>,
   /**
+   * / List all data types stored for the caller's principal
+   */
+  'listMyDataTypes' : ActorMethod<[], Array<string>>,
+  /**
    * / List all data types stored for a given username - only owner or admin can list
    */
   'listUserDataTypes' : ActorMethod<[string], Array<string>>,
@@ -113,6 +121,10 @@ export interface _SERVICE {
     undefined
   >,
   'saveCallerUserProfile' : ActorMethod<[UserProfile], undefined>,
+  /**
+   * / Save data for the caller's principal under a specific dataType
+   */
+  'saveMyData' : ActorMethod<[string, string], undefined>,
   /**
    * / Save user data (username + dataType) JSON blob - only owner or admin can save
    */

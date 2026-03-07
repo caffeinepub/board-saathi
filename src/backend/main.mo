@@ -6,13 +6,15 @@ import List "mo:core/List";
 import Nat "mo:core/Nat";
 import Int "mo:core/Int";
 import Iter "mo:core/Iter";
+import Principal "mo:core/Principal";
 import Runtime "mo:core/Runtime";
 import Authorization "authorization/access-control";
 import MixinAuthorization "authorization/MixinAuthorization";
 import MixinStorage "blob-storage/Mixin";
+import Migration "migration";
 
 // Apply migration using with-clause
-
+(with migration = Migration.run)
 actor {
   let accessControlState = Authorization.initState();
   include MixinAuthorization(accessControlState);
@@ -280,8 +282,11 @@ actor {
   var studentFeedbackIdCounter : Nat = 0;
   var messageIdCounter : Nat = 0;
 
-  // New persistent user data store (username -> dataType -> jsonBlob)
+  // Persistent user data store (username -> dataType -> jsonBlob)
   let userDataStore = Map.empty<Text, Map.Map<Text, Text>>();
+
+  // New persistent principal data store
+  let principalDataStore = Map.empty<Principal, Map.Map<Text, Text>>();
 
   func oneDayNs() : Int { 86_400_000_000_000 };
 
@@ -748,7 +753,7 @@ actor {
     if (not Authorization.hasPermission(accessControlState, caller, #user)) {
       Runtime.trap("Unauthorized: Only registered users can save user data");
     };
-    
+
     if (username == "" or dataType == "" or jsonBlob == "") {
       Runtime.trap("Username, dataType, and jsonBlob must not be empty");
     };
@@ -783,7 +788,7 @@ actor {
     if (not Authorization.hasPermission(accessControlState, caller, #user)) {
       Runtime.trap("Unauthorized: Only registered users can read user data");
     };
-    
+
     if (username == "" or dataType == "") {
       Runtime.trap("Username and dataType must not be empty");
     };
@@ -812,7 +817,7 @@ actor {
     if (not Authorization.hasPermission(accessControlState, caller, #user)) {
       Runtime.trap("Unauthorized: Only registered users can list user data types");
     };
-    
+
     if (username == "") {
       Runtime.trap("Username must not be empty");
     };
@@ -833,6 +838,58 @@ actor {
     switch (userDataStore.get(username)) {
       case (?userMap) {
         let iter = userMap.keys();
+        iter.toArray();
+      };
+      case (null) { [] };
+    };
+  };
+
+  /// Save data for the caller's principal under a specific dataType
+  public shared ({ caller }) func saveMyData(dataType : Text, jsonBlob : Text) : async () {
+    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
+      Runtime.trap("Unauthorized: Only registered users can save data");
+    };
+
+    if (dataType == "" or jsonBlob == "") {
+      Runtime.trap("DataType and jsonBlob must not be empty");
+    };
+
+    let principalMap = switch (principalDataStore.get(caller)) {
+      case (?map) { map };
+      case (null) {
+        let newMap = Map.empty<Text, Text>();
+        principalDataStore.add(caller, newMap);
+        newMap;
+      };
+    };
+    principalMap.add(dataType, jsonBlob);
+  };
+
+  /// Get data for the caller's principal by dataType
+  public query ({ caller }) func getMyData(dataType : Text) : async ?Text {
+    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
+      Runtime.trap("Unauthorized: Only registered users can read data");
+    };
+
+    if (dataType == "") {
+      Runtime.trap("DataType must not be empty");
+    };
+
+    switch (principalDataStore.get(caller)) {
+      case (?principalMap) { principalMap.get(dataType) };
+      case (null) { null };
+    };
+  };
+
+  /// List all data types stored for the caller's principal
+  public query ({ caller }) func listMyDataTypes() : async [Text] {
+    if (not Authorization.hasPermission(accessControlState, caller, #user)) {
+      Runtime.trap("Unauthorized: Only registered users can list data types");
+    };
+
+    switch (principalDataStore.get(caller)) {
+      case (?principalMap) {
+        let iter = principalMap.keys();
         iter.toArray();
       };
       case (null) { [] };

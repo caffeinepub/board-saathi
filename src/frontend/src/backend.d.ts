@@ -65,6 +65,10 @@ export interface backendInterface {
     getFeedbackForStudent(student: Principal): Promise<Array<StudentFeedback>>;
     getFeedbackFromParent(parent: Principal): Promise<Array<StudentFeedback>>;
     getMessages(user: Principal): Promise<[Array<ChatMessage>, boolean]>;
+    /**
+     * / Get data for the caller's principal by dataType
+     */
+    getMyData(dataType: string): Promise<string | null>;
     getParentByUsername(username: string): Promise<ParentProfilePublic | null>;
     getParentProfileByUsername(username: string): Promise<ParentProfilePublic | null>;
     getPresence(user: Principal): Promise<PresenceInfo>;
@@ -77,6 +81,10 @@ export interface backendInterface {
     getUserProfile(user: Principal): Promise<UserProfile | null>;
     isCallerAdmin(): Promise<boolean>;
     /**
+     * / List all data types stored for the caller's principal
+     */
+    listMyDataTypes(): Promise<Array<string>>;
+    /**
      * / List all data types stored for a given username - only owner or admin can list
      */
     listUserDataTypes(username: string): Promise<Array<string>>;
@@ -84,6 +92,10 @@ export interface backendInterface {
     registerParent(username: string, name: string, linkedStudentUsername: string, password: string): Promise<void>;
     registerStudent(username: string, name: string, school: string, studentClass: bigint, password: string): Promise<void>;
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
+    /**
+     * / Save data for the caller's principal under a specific dataType
+     */
+    saveMyData(dataType: string, jsonBlob: string): Promise<void>;
     /**
      * / Save user data (username + dataType) JSON blob - only owner or admin can save
      */

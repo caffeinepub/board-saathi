@@ -24,6 +24,7 @@ import {
   clearIIPrincipal,
   clearParentSession,
   getCurrentUserAccount,
+  getCurrentUserId,
   getIIPrincipal,
   isGuest,
   saveUserAccount,
@@ -101,9 +102,10 @@ export default function ProfilePage() {
     setSyncing(true);
     try {
       toast.info("Uploading your data...", { duration: 2000 });
-      await flushQueue(syncKey, actor);
+      await flushQueue(actor);
       toast.info("Downloading latest data...", { duration: 2000 });
-      await pullAllData(syncKey, actor);
+      const currentUserId = getCurrentUserId();
+      await pullAllData(currentUserId || syncKey, actor);
       toast.success("Data synced successfully! ✓");
     } catch (e) {
       toast.error("Sync failed. Please try again.");

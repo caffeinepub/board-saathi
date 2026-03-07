@@ -121,6 +121,7 @@ export const idlService = IDL.Service({
       [IDL.Vec(ChatMessage), IDL.Bool],
       ['query'],
     ),
+  'getMyData' : IDL.Func([IDL.Text], [IDL.Opt(IDL.Text)], ['query']),
   'getParentByUsername' : IDL.Func(
       [IDL.Text],
       [IDL.Opt(ParentProfilePublic)],
@@ -149,6 +150,7 @@ export const idlService = IDL.Service({
       ['query'],
     ),
   'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
+  'listMyDataTypes' : IDL.Func([], [IDL.Vec(IDL.Text)], ['query']),
   'listUserDataTypes' : IDL.Func([IDL.Text], [IDL.Vec(IDL.Text)], ['query']),
   'markMessagesRead' : IDL.Func([IDL.Principal], [], []),
   'registerParent' : IDL.Func([IDL.Text, IDL.Text, IDL.Text, IDL.Text], [], []),
@@ -158,6 +160,7 @@ export const idlService = IDL.Service({
       [],
     ),
   'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
+  'saveMyData' : IDL.Func([IDL.Text, IDL.Text], [], []),
   'saveUserData' : IDL.Func([IDL.Text, IDL.Text, IDL.Text], [], []),
   'sendMessage' : IDL.Func([IDL.Principal, IDL.Text, IDL.Text], [], []),
   'setTyping' : IDL.Func([IDL.Bool], [], []),
@@ -278,6 +281,7 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(ChatMessage), IDL.Bool],
         ['query'],
       ),
+    'getMyData' : IDL.Func([IDL.Text], [IDL.Opt(IDL.Text)], ['query']),
     'getParentByUsername' : IDL.Func(
         [IDL.Text],
         [IDL.Opt(ParentProfilePublic)],
@@ -306,6 +310,7 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
+    'listMyDataTypes' : IDL.Func([], [IDL.Vec(IDL.Text)], ['query']),
     'listUserDataTypes' : IDL.Func([IDL.Text], [IDL.Vec(IDL.Text)], ['query']),
     'markMessagesRead' : IDL.Func([IDL.Principal], [], []),
     'registerParent' : IDL.Func(
@@ -319,6 +324,7 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
+    'saveMyData' : IDL.Func([IDL.Text, IDL.Text], [], []),
     'saveUserData' : IDL.Func([IDL.Text, IDL.Text, IDL.Text], [], []),
     'sendMessage' : IDL.Func([IDL.Principal, IDL.Text, IDL.Text], [], []),
     'setTyping' : IDL.Func([IDL.Bool], [], []),
