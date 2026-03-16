@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Board Saathi – You're Offline</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --teal:        oklch(0.55 0.15 200);
+      --teal-light:  oklch(0.92 0.06 200);
+      --teal-dark:   oklch(0.38 0.13 200);
+      --orange:      oklch(0.65 0.18 45);
+      --orange-light:oklch(0.94 0.07 45);
+      --bg:          oklch(0.97 0.01 200);
+      --card:        #ffffff;
+      --text:        oklch(0.22 0.04 200);
+      --muted:       oklch(0.55 0.03 200);
+      --border:      oklch(0.88 0.04 200);
+      --radius:      16px;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg:   oklch(0.14 0.03 200);
+        --card: oklch(0.20 0.04 200);
+        --text: oklch(0.92 0.02 200);
+        --muted:oklch(0.60 0.04 200);
+        --border:oklch(0.30 0.05 200);
+        --teal-light: oklch(0.28 0.08 200);
+        --orange-light: oklch(0.28 0.07 45);
+      }
+    }
+
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 24px;
+      text-align: center;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 48px 40px;
+      max-width: 420px;
+      width: 100%;
+      box-shadow: 0 4px 32px oklch(0.55 0.15 200 / 0.10);
+    }
+
+    .icon-wrap {
+      width: 88px;
+      height: 88px;
+      border-radius: 50%;
+      background: var(--teal-light);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 28px;
+    }
+
+    .icon-wrap svg {
+      width: 44px;
+      height: 44px;
+      color: var(--teal);
+    }
+
+    .app-name {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--teal);
+      margin-bottom: 12px;
+    }
+
+    h1 {
+      font-size: 26px;
+      font-weight: 800;
+      color: var(--text);
+      margin-bottom: 12px;
+      line-height: 1.2;
+    }
+
+    p {
+      font-size: 15px;
+      color: var(--muted);
+      line-height: 1.6;
+      margin-bottom: 32px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--orange-light);
+      color: var(--orange);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 12px;
+      border-radius: 999px;
+      margin-bottom: 24px;
+    }
+
+    .badge-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--orange);
+      animation: pulse 1.6s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.5; transform: scale(0.75); }
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--teal);
+      color: #fff;
+      font-size: 15px;
+      font-weight: 700;
+      padding: 13px 32px;
+      border: none;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: background 0.18s, transform 0.12s;
+      text-decoration: none;
+    }
+
+    .btn:hover  { background: var(--teal-dark); }
+    .btn:active { transform: scale(0.97); }
+
+    .tips {
+      margin-top: 32px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+    }
+
+    .tips-title {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    .tips ul {
+      list-style: none;
+      text-align: left;
+    }
+
+    .tips li {
+      font-size: 13px;
+      color: var(--muted);
+      padding: 4px 0;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .tips li::before {
+      content: '✓';
+      color: var(--teal);
+      font-weight: 700;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <!-- Offline icon -->
+    <div class="icon-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <line x1="1" y1="1" x2="23" y2="23"/>
+        <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/>
+        <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/>
+        <path d="M10.71 5.05A16 16 0 0 1 22.56 9"/>
+        <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/>
+        <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+        <line x1="12" y1="20" x2="12.01" y2="20"/>
+      </svg>
+    </div>
+
+    <div class="app-name">Board Saathi</div>
+
+    <div class="badge">
+      <span class="badge-dot"></span>
+      No Internet Connection
+    </div>
+
+    <h1>You're Offline</h1>
+
+    <p>
+      It looks like you've lost your internet connection.
+      Don't worry — your study data is safely stored on your device.
+    </p>
+
+    <button class="btn" onclick="window.location.reload()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="23 4 23 10 17 10"/>
+        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+      </svg>
+      Try Again
+    </button>
+
+    <div class="tips">
+      <div class="tips-title">While offline you can still</div>
+      <ul>
+        <li>Review your saved notes and flashcards</li>
+        <li>Browse your question bank</li>
+        <li>Check your study planner</li>
+        <li>View your progress and achievements</li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>

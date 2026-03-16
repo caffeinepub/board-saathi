@@ -1,3 +1,13 @@
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -25,6 +35,7 @@ import {
   HelpCircle,
   Loader2,
   Plus,
+  Trash2,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -32,6 +43,7 @@ import NotesSection from "../components/NotesSection";
 import QuestionsSection from "../components/QuestionsSection";
 import {
   useAddChapter,
+  useDeleteChapter,
   useGetChaptersForSubject,
   useGetSubjects,
   useMarkChapterCompleted,
@@ -54,6 +66,7 @@ interface ChapterCardProps {
   subjectId: number;
   subjectName: string;
   onToggleComplete: () => void;
+  onDelete: () => void;
 }
 
 function ChapterCard({
@@ -61,6 +74,7 @@ function ChapterCard({
   subjectId,
   subjectName,
   onToggleComplete,
+  onDelete,
 }: ChapterCardProps) {
   const userId = getCurrentUserId() ?? "guest";
   const [expanded, setExpanded] = useState(false);
@@ -98,7 +112,11 @@ function ChapterCard({
 
   return (
     <Card
-      className={`transition-all ${chapter.completed ? "border-green-200 bg-green-50/30 dark:bg-green-950/20" : ""}`}
+      className={`transition-all ${
+        chapter.completed
+          ? "border-green-200 bg-green-50/30 dark:bg-green-950/20"
+          : ""
+      }`}
     >
       <CardContent className="p-4">
         <div className="flex items-start gap-3">
@@ -116,11 +134,13 @@ function ChapterCard({
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2">
               <p
-                className={`font-medium text-sm ${chapter.completed ? "line-through text-muted-foreground" : ""}`}
+                className={`font-medium text-sm ${
+                  chapter.completed ? "line-through text-muted-foreground" : ""
+                }`}
               >
                 {chapter.name}
               </p>
-              <div className="flex items-center gap-2 flex-shrink-0">
+              <div className="flex items-center gap-1.5 flex-shrink-0">
                 {chapter.weightage > 0 && (
                   <Badge variant="outline" className="text-xs">
                     {chapter.weightage}%
@@ -143,6 +163,18 @@ function ChapterCard({
                     SRS
                   </button>
                 )}
+                <button
+                  type="button"
+                  data-ocid="chapters.delete_button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete();
+                  }}
+                  className="p-1 rounded text-destructive hover:text-destructive hover:bg-destructive/10 transition-colors"
+                  title="Delete chapter"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
                 <button
                   type="button"
                   onClick={() => setExpanded(!expanded)}
@@ -201,10 +233,12 @@ export default function ChaptersPage() {
     useGetChaptersForSubject(subjectIdNum);
   const addChapterMutation = useAddChapter();
   const markCompletedMutation = useMarkChapterCompleted();
+  const deleteChapterMutation = useDeleteChapter();
 
   const [addOpen, setAddOpen] = useState(false);
   const [chapterName, setChapterName] = useState("");
   const [weightage, setWeightage] = useState("");
+  const [deleteChapterId, setDeleteChapterId] = useState<number | null>(null);
 
   const subject = subjects.find((s) => s.id === subjectIdNum);
 
@@ -245,6 +279,20 @@ export default function ChaptersPage() {
     }
   };
 
+  const handleDeleteChapter = async () => {
+    if (deleteChapterId === null) return;
+    try {
+      await deleteChapterMutation.mutateAsync(deleteChapterId);
+      toast.success("Chapter deleted");
+    } catch {
+      toast.error("Failed to delete chapter");
+    } finally {
+      setDeleteChapterId(null);
+    }
+  };
+
+  const deleteChapterName =
+    chapters.find((c) => c.id === deleteChapterId)?.name ?? "";
   const completedCount = chapters.filter((c) => c.completed).length;
 
   if (isLoading) {
@@ -283,7 +331,7 @@ export default function ChaptersPage() {
       </div>
 
       {chapters.length === 0 ? (
-        <div className="text-center py-16">
+        <div className="text-center py-16" data-ocid="chapters.empty_state">
           <BookOpen className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
           <h3 className="text-lg font-semibold mb-2">No chapters yet</h3>
           <p className="text-muted-foreground mb-4">
@@ -305,6 +353,7 @@ export default function ChaptersPage() {
               onToggleComplete={() =>
                 handleToggleComplete(chapter.id, chapter.completed)
               }
+              onDelete={() => setDeleteChapterId(chapter.id)}
             />
           ))}
         </div>
@@ -366,6 +415,41 @@ export default function ChaptersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Chapter Confirmation */}
+      <AlertDialog
+        open={deleteChapterId !== null}
+        onOpenChange={(open) => !open && setDeleteChapterId(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Chapter</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete{" "}
+              <strong>&ldquo;{deleteChapterName}&rdquo;</strong>? This will also
+              delete all its notes and questions. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              data-ocid="chapters.delete.cancel_button"
+              onClick={() => setDeleteChapterId(null)}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              data-ocid="chapters.delete.confirm_button"
+              onClick={handleDeleteChapter}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteChapterMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : null}
+              Delete Chapter
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

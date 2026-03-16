@@ -44,7 +44,10 @@ import {
   flushQueue,
   initDataChangeListener,
   pruneStaleQueue,
+  pullAllData,
+  pushAllLocalData,
   setGlobalActor,
+  syncBothWays,
 } from "../utils/syncService";
 import BottomNavBar from "./BottomNavBar";
 import SyncStatus from "./SyncStatus";
@@ -103,23 +106,35 @@ export default function Layout() {
   // Initialise the data-change listener once and prune stale queue items
   useEffect(() => {
     initDataChangeListener();
-    pruneStaleQueue(); // clears any stuck queue items from previous sessions
+    pruneStaleQueue();
   }, []);
 
   // Keep syncService's global actor reference up to date.
-  // setGlobalActor internally flushes queue when actor becomes available.
+  // When actor becomes available: push local data first, then pull from canister.
   useEffect(() => {
     setGlobalActor(actor);
+    if (actor) {
+      const uid = getCurrentUserId();
+      if (uid && uid !== "guest") {
+        // Push local → canister first (ensures canister has our latest data),
+        // then pull canister → local (merges changes from other devices).
+        syncBothWays(uid, actor).catch(() => {});
+      }
+    }
   }, [actor]);
 
-  // Track online/offline status and flush pending sync queue on reconnect
+  // Track online/offline status and sync on reconnect
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
       toast.success("Back online!", { duration: 3000 });
-      // Auto-flush pending data to canister when connection returns
       if (actor) {
-        flushQueue(actor).catch(() => {});
+        const uid = getCurrentUserId();
+        if (uid && uid !== "guest") {
+          syncBothWays(uid, actor)
+            .then(() => queryClient.clear())
+            .catch(() => {});
+        }
       }
     };
     const handleOffline = () => {
@@ -133,15 +148,53 @@ export default function Layout() {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
+  }, [actor, queryClient]);
+
+  // AUTO-REFRESH: When app comes to foreground, push local first then pull.
+  // This is the correct order — ensures local unsaved data reaches canister
+  // before we overwrite local with canister data.
+  useEffect(() => {
+    if (!actor) return;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        const uid = getCurrentUserId();
+        if (uid && uid !== "guest" && navigator.onLine) {
+          // CRITICAL: push first, then pull — never pull-only
+          syncBothWays(uid, actor)
+            .then(() => {
+              queryClient.clear();
+            })
+            .catch(() => {});
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [actor, queryClient]);
+
+  // PERIODIC SYNC: Every 60 seconds, push any pending local changes to canister.
+  useEffect(() => {
+    if (!actor) return;
+    const interval = setInterval(() => {
+      if (!navigator.onLine) return;
+      const uid = getCurrentUserId();
+      if (uid && uid !== "guest") {
+        // Flush queue first (fast), then full push if queue was empty
+        flushQueue(actor)
+          .then(() => pushAllLocalData(uid, actor))
+          .catch(() => {});
+      }
+    }, 60_000);
+    return () => clearInterval(interval);
   }, [actor]);
 
   const getCurrentUsername = (): string | null => {
     const userId = getCurrentUserId();
     if (!userId || userId === "guest") return null;
-    // For II users: extract username from stored account
     const account = getUserAccountById(userId);
     if (account) return account.username;
-    // For II users with no local account yet, use principal text
     const iiPrincipal = getIIPrincipal();
     return iiPrincipal || null;
   };
@@ -150,15 +203,12 @@ export default function Layout() {
   const { unreadCount } = useGetChildMessages(guest ? null : currentUsername);
 
   const handleLogout = () => {
-    // Clear Internet Identity session
     iiClear();
     clearIIPrincipal();
-    // Clear legacy session
     clearCurrentSession();
     clearParentSession();
     queryClient.clear();
     toast.success("Logged out successfully");
-    // Full page reload to /login so the router re-evaluates auth state from scratch
     window.location.href = "/login";
   };
 
@@ -168,7 +218,7 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen bg-background flex">
-      {/* Offline banner — fixed at top, above everything */}
+      {/* Offline banner */}
       {!isOnline && (
         <output
           className="fixed top-0 left-0 right-0 z-[100] flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold"
@@ -257,7 +307,6 @@ export default function Layout() {
               </div>
             </div>
           )}
-          {/* Sync status indicator */}
           {!guest && <SyncStatus />}
           {guest ? (
             <Button
@@ -284,7 +333,7 @@ export default function Layout() {
 
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
-        // biome-ignore lint/a11y/useKeyWithClickEvents: overlay dismiss, keyboard handled by X button inside drawer
+        // biome-ignore lint/a11y/useKeyWithClickEvents: overlay dismiss
         <div
           className="fixed inset-0 z-40 bg-black/50 lg:hidden"
           onClick={() => setSidebarOpen(false)}

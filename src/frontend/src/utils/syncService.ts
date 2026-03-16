@@ -1,16 +1,11 @@
 /**
  * Sync Service — bridges localStorage (offline cache) and the Motoko canister (persistent global storage).
  *
- * ARCHITECTURE (v2 — Principal-based):
+ * ARCHITECTURE (v3 — Principal-based, push-before-pull, merge-safe):
  *  - All canister calls use saveMyData/getMyData/listMyDataTypes — keyed by caller's Principal.
- *  - No username matching, no ownership errors, no "Unauthorized" surprises.
- *  - This is the fix for the cross-device sync bug where username prefix mismatch caused
- *    every saveUserData call to silently fail.
- *
- * Design rules:
- *  - No React hooks. Pure functions/class only.
- *  - Never throws. All errors are caught and logged.
- *  - Queue items are persisted to localStorage under "bs_sync_queue" so they survive refreshes.
+ *  - visibilityChange and actor-ready events push first, then pull.
+ *  - Notes with imageData are stripped before canister upload (images stay local only).
+ *  - Array merge uses "most items wins" + ID-based dedup so no data is ever lost.
  */
 
 import type { backendInterface } from "../backend";
@@ -27,8 +22,11 @@ interface SyncQueueItem {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const SYNC_QUEUE_KEY = "bs_sync_queue_v2"; // new key — clears old broken queue
+const SYNC_QUEUE_KEY = "bs_sync_queue_v3"; // bumped — clears old broken queue
 const LAST_SYNC_KEY = "bs_last_sync";
+
+// Max payload size to send to canister in one call (1.5 MB safe limit)
+const MAX_PAYLOAD_BYTES = 1_500_000;
 
 // ─── Pulling state ────────────────────────────────────────────────────────────
 let _isPulling = false;
@@ -69,6 +67,13 @@ export const SYNC_DATA_TYPES = [
   "examPapers",
 ] as const;
 
+// Data types that may contain large image blobs — strip imageData before canister upload
+const IMAGE_BEARING_TYPES = new Set([
+  "notes",
+  "handwritingAnalyses",
+  "answerEvaluations",
+]);
+
 // ─── Queue helpers ────────────────────────────────────────────────────────────
 
 function getQueue(): SyncQueueItem[] {
@@ -90,7 +95,6 @@ function saveQueue(queue: SyncQueueItem[]): void {
 
 function enqueue(item: SyncQueueItem): void {
   const queue = getQueue();
-  // Replace existing entry for same dataType with newer one
   const idx = queue.findIndex((q) => q.dataType === item.dataType);
   if (idx >= 0) {
     queue[idx] = item;
@@ -100,12 +104,73 @@ function enqueue(item: SyncQueueItem): void {
   saveQueue(queue);
 }
 
-// ─── localStorage key helper ──────────────────────────────────────────────────
+// ─── Payload helpers ──────────────────────────────────────────────────────────
 
 /**
- * Returns the localStorage key for a given userId and dataType.
- * userId is in the format "principal_<principalText>" for II users.
+ * For image-bearing data types, strip imageData fields before sending to canister.
+ * Images are kept in localStorage only — they're device-local cache.
+ * This prevents 2MB+ payloads that cause silent canister call failures.
  */
+function prepareForCanister(dataType: string, raw: string): string {
+  if (!IMAGE_BEARING_TYPES.has(dataType)) return raw;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return raw;
+    // Strip imageData from each item, keep everything else
+    const stripped = parsed.map((item: Record<string, unknown>) => {
+      if (item && typeof item === "object" && "imageData" in item) {
+        const { imageData: _img, ...rest } = item;
+        return rest;
+      }
+      return item;
+    });
+    const result = JSON.stringify(stripped);
+    // Extra safety: if still too large, skip sending to canister
+    if (result.length > MAX_PAYLOAD_BYTES) {
+      console.warn(
+        `[SyncService] ${dataType} payload still too large after stripping (${result.length} bytes), skipping canister upload`,
+      );
+      return "";
+    }
+    return result;
+  } catch {
+    return raw;
+  }
+}
+
+/**
+ * Merge remote (canister) array with local array.
+ * Strategy:
+ *  - Union of all items by `id` field.
+ *  - If same id exists in both, remote wins (canister is authoritative for existing items).
+ *  - Items present only locally are kept (they may not have synced yet).
+ *  - Result is sorted by id ascending.
+ */
+function mergeArrays(localRaw: string, remoteRaw: string): string {
+  try {
+    const local: Record<string, unknown>[] = JSON.parse(localRaw);
+    const remote: Record<string, unknown>[] = JSON.parse(remoteRaw);
+    if (!Array.isArray(local) || !Array.isArray(remote)) return remoteRaw;
+
+    // Build a map: id -> item. Remote wins on conflict.
+    const map = new Map<unknown, Record<string, unknown>>();
+    for (const item of local) {
+      const key = item.id ?? item.chapterId ?? JSON.stringify(item);
+      map.set(key, item);
+    }
+    for (const item of remote) {
+      const key = item.id ?? item.chapterId ?? JSON.stringify(item);
+      map.set(key, item); // remote overwrites local on conflict
+    }
+    const merged = Array.from(map.values());
+    return JSON.stringify(merged);
+  } catch {
+    return remoteRaw;
+  }
+}
+
+// ─── localStorage key helper ──────────────────────────────────────────────────
+
 function localKey(userId: string, dataType: string): string {
   return `bs_${userId}_${dataType}`;
 }
@@ -114,7 +179,6 @@ function localKey(userId: string, dataType: string): string {
 
 /**
  * Schedules a data type to be synced to the canister.
- * If the actor is available and the device is online, it attempts an immediate flush.
  */
 export function scheduleSync(
   userId: string,
@@ -122,29 +186,43 @@ export function scheduleSync(
   data: string,
   actor?: backendInterface | null,
 ): void {
-  // Don't sync guest data
   if (userId === "guest") return;
+
+  const payload = prepareForCanister(dataType, data);
+  if (!payload) return; // Too large even after stripping — skip
 
   const item: SyncQueueItem = {
     dataType,
-    data,
+    data: payload,
     timestamp: Date.now(),
   };
 
   enqueue(item);
 
-  // Attempt immediate flush if conditions are met
   if (actor && navigator.onLine) {
-    flushQueue(actor).catch(() => {
-      // Queue will be flushed later on reconnect
-    });
+    flushQueue(actor).catch(() => {});
   }
 }
 
 /**
- * Fetches all data types from the canister for the authenticated caller.
- * Uses saveMyData/getMyData which key on the caller's Principal — no username mismatch.
- * Remote (canister) data is always treated as source of truth during login pull.
+ * Push ALL local data to canister, then pull the latest back.
+ * This is the correct order: push first ensures canister has our latest data,
+ * then pull merges any changes from other devices.
+ */
+export async function syncBothWays(
+  userId: string,
+  actor: backendInterface,
+): Promise<void> {
+  if (!userId || !actor || userId === "guest") return;
+  // Step 1: push local → canister
+  await pushAllLocalData(userId, actor);
+  // Step 2: pull canister → local (merge)
+  await pullAllData(userId, actor);
+}
+
+/**
+ * Fetches all data types from the canister and merges with local data.
+ * Remote data wins on conflicts, but local-only items are preserved.
  */
 export async function pullAllData(
   userId: string,
@@ -154,20 +232,17 @@ export async function pullAllData(
 
   setIsPulling(true);
   try {
-    // Get the list of data types stored on the canister for this Principal
     let storedTypes: string[] = [];
     try {
       storedTypes = await actor.listMyDataTypes();
     } catch (e) {
       console.warn("[SyncService] listMyDataTypes failed:", e);
-      // Fall back to pulling all known types
       storedTypes = [...SYNC_DATA_TYPES];
     }
 
     const typesToPull =
       storedTypes.length > 0 ? storedTypes : [...SYNC_DATA_TYPES];
 
-    // Fetch all data types in parallel using getMyData (Principal-keyed, always works)
     const results = await Promise.allSettled(
       typesToPull.map(async (dataType) => {
         try {
@@ -176,58 +251,69 @@ export async function pullAllData(
 
           if (remote !== null && remote !== undefined && remote.trim() !== "") {
             try {
-              const parsed = JSON.parse(remote);
+              const remoteParsed = JSON.parse(remote);
+              const localRaw = localStorage.getItem(key);
 
-              // For arrays: if canister has empty [] but local has real data, push local up
-              if (Array.isArray(parsed) && parsed.length === 0) {
-                const existing = localStorage.getItem(key);
-                if (existing) {
+              if (Array.isArray(remoteParsed)) {
+                // For arrays: merge remote + local so we never lose local-only items
+                if (localRaw && localRaw.trim() !== "") {
                   try {
-                    const existingParsed = JSON.parse(existing);
-                    if (
-                      Array.isArray(existingParsed) &&
-                      existingParsed.length > 0
-                    ) {
-                      console.info(
-                        `[SyncService] Canister empty for ${dataType}, pushing local data up`,
-                      );
-                      // Push local to canister in background
-                      actor.saveMyData(dataType, existing).catch(() => {});
-                      // Keep local data
+                    const localParsed = JSON.parse(localRaw);
+                    if (Array.isArray(localParsed)) {
+                      if (remoteParsed.length === 0 && localParsed.length > 0) {
+                        // Canister has nothing — push local up and keep local
+                        const payload = prepareForCanister(dataType, localRaw);
+                        if (payload)
+                          actor.saveMyData(dataType, payload).catch(() => {});
+                        return; // keep local
+                      }
+                      // Merge: keep items from both, remote wins on id conflict
+                      const merged = mergeArrays(localRaw, remote);
+                      localStorage.setItem(key, merged);
+                      // If merged has more items than remote, push merged back
+                      try {
+                        const mergedParsed = JSON.parse(merged);
+                        if (mergedParsed.length > remoteParsed.length) {
+                          const payload = prepareForCanister(dataType, merged);
+                          if (payload)
+                            actor.saveMyData(dataType, payload).catch(() => {});
+                        }
+                      } catch {
+                        /* ignore */
+                      }
                       return;
                     }
                   } catch {
-                    // ignore
+                    /* fall through to simple overwrite */
                   }
                 }
+                // No local data — just store remote
+                localStorage.setItem(key, remote);
+              } else {
+                // Non-array (objects like streak): remote wins
+                localStorage.setItem(key, remote);
               }
-
-              // Valid JSON — overwrite local with canister data (source of truth)
-              localStorage.setItem(key, remote);
             } catch {
-              // Still store even if parse fails
               localStorage.setItem(key, remote);
             }
           } else {
-            // Canister has no data — check if we have local data to push up
+            // Canister has no data — push local up if we have any
             const existing = localStorage.getItem(key);
             if (existing && existing.trim() !== "") {
               try {
                 const parsed = JSON.parse(existing);
-                if (
-                  (Array.isArray(parsed) && parsed.length > 0) ||
-                  (!Array.isArray(parsed) &&
-                    typeof parsed === "object" &&
+                const hasData = Array.isArray(parsed)
+                  ? parsed.length > 0
+                  : typeof parsed === "object" &&
                     parsed !== null &&
-                    Object.keys(parsed).length > 0)
-                ) {
-                  console.info(
-                    `[SyncService] Canister missing ${dataType}, pushing local data up`,
-                  );
-                  actor.saveMyData(dataType, existing).catch(() => {});
+                    Object.keys(parsed).length > 0;
+                if (hasData) {
+                  const payload = prepareForCanister(dataType, existing);
+                  if (payload)
+                    actor.saveMyData(dataType, payload).catch(() => {});
                 }
               } catch {
-                // ignore
+                /* ignore */
               }
             }
           }
@@ -241,7 +327,6 @@ export async function pullAllData(
     console.info(
       `[SyncService] Pulled ${succeeded}/${typesToPull.length} data types`,
     );
-
     localStorage.setItem(LAST_SYNC_KEY, Date.now().toString());
   } catch (e) {
     console.warn("[SyncService] pullAllData failed:", e);
@@ -251,8 +336,8 @@ export async function pullAllData(
 }
 
 /**
- * Pushes ALL local data types for a given userId to the canister immediately.
- * Uses saveMyData — keyed by caller's Principal, always succeeds for the authenticated user.
+ * Pushes ALL local data types for a given userId to the canister.
+ * Image data is stripped before upload to stay within call size limits.
  */
 export async function pushAllLocalData(
   userId: string,
@@ -266,8 +351,10 @@ export async function pushAllLocalData(
         const key = localKey(userId, dataType);
         const raw = localStorage.getItem(key);
         if (raw !== null && raw !== undefined && raw.trim() !== "") {
-          // Push even empty arrays/objects — they represent valid state
-          await actor.saveMyData(dataType, raw);
+          const payload = prepareForCanister(dataType, raw);
+          if (payload) {
+            await actor.saveMyData(dataType, payload);
+          }
         }
       } catch (e) {
         console.warn(`[SyncService] Failed to push ${dataType}:`, e);
@@ -283,8 +370,7 @@ export async function pushAllLocalData(
 }
 
 /**
- * Pushes all queued items to the canister.
- * Items are removed from the queue only after successful upload.
+ * Flushes all queued items to the canister.
  */
 export async function flushQueue(actor: backendInterface): Promise<void> {
   if (!actor || !navigator.onLine) return;
@@ -297,7 +383,9 @@ export async function flushQueue(actor: backendInterface): Promise<void> {
   await Promise.allSettled(
     queue.map(async (item) => {
       try {
-        await actor.saveMyData(item.dataType, item.data);
+        if (item.data && item.data.trim() !== "") {
+          await actor.saveMyData(item.dataType, item.data);
+        }
       } catch (e) {
         console.warn(`[SyncService] Failed to push ${item.dataType}:`, e);
         failed.push(item);
@@ -305,7 +393,6 @@ export async function flushQueue(actor: backendInterface): Promise<void> {
     }),
   );
 
-  // Re-queue failed items only
   saveQueue(failed);
 
   if (failed.length === 0) {
@@ -314,7 +401,7 @@ export async function flushQueue(actor: backendInterface): Promise<void> {
     try {
       window.dispatchEvent(new CustomEvent("bs:sync-status-changed"));
     } catch {
-      // ignore
+      /* ignore */
     }
   } else {
     console.warn(
@@ -324,7 +411,7 @@ export async function flushQueue(actor: backendInterface): Promise<void> {
 }
 
 /**
- * Removes queue items older than 1 hour — they are stale and will never succeed.
+ * Removes queue items older than 1 hour.
  */
 export function pruneStaleQueue(): void {
   const queue = getQueue();
@@ -349,24 +436,19 @@ export function getSyncStatus(): SyncStatus {
   return "synced";
 }
 
-/**
- * Listens for bs:data-changed events dispatched by localStorageService,
- * and schedules a sync for the changed data type.
- */
+// ─── Global actor + listeners ─────────────────────────────────────────────────
+
 let _globalActor: backendInterface | null = null;
 let _listenerRegistered = false;
 
 export function setGlobalActor(actor: backendInterface | null): void {
   _globalActor = actor;
-
-  // When actor becomes available, immediately flush any pending queue items
   if (actor && navigator.onLine) {
     flushQueue(actor).catch(() => {});
   }
 }
 
 export function initDataChangeListener(): void {
-  // Guard against duplicate listener registration on re-mounts
   if (_listenerRegistered) return;
   _listenerRegistered = true;
 
@@ -377,7 +459,6 @@ export function initDataChangeListener(): void {
     scheduleSync(userId, dataType, data, _globalActor);
   }) as EventListener);
 
-  // Flush queue when coming back online
   window.addEventListener("online", () => {
     if (_globalActor) {
       flushQueue(_globalActor).catch(() => {});

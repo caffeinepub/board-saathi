@@ -1,3 +1,13 @@
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -12,11 +22,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { useNavigate } from "@tanstack/react-router";
-import { BookOpen, ChevronRight, Loader2, Plus } from "lucide-react";
+import { BookOpen, ChevronRight, Loader2, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
   useAddSubject,
+  useDeleteSubject,
   useGetAllChapters,
   useGetSubjects,
 } from "../hooks/useQueries";
@@ -51,10 +62,12 @@ export default function SubjectsPage() {
   const navigate = useNavigate();
   const [addOpen, setAddOpen] = useState(false);
   const [newSubjectName, setNewSubjectName] = useState("");
+  const [deleteSubjectId, setDeleteSubjectId] = useState<number | null>(null);
 
   const { data: subjects = [], isLoading: subjectsLoading } = useGetSubjects();
   const { data: allChapters = [] } = useGetAllChapters();
   const addSubjectMutation = useAddSubject();
+  const deleteSubjectMutation = useDeleteSubject();
 
   const handleAddSubject = async () => {
     if (!newSubjectName.trim()) {
@@ -71,6 +84,18 @@ export default function SubjectsPage() {
     }
   };
 
+  const handleDeleteSubject = async () => {
+    if (deleteSubjectId === null) return;
+    try {
+      await deleteSubjectMutation.mutateAsync(deleteSubjectId);
+      toast.success("Subject deleted");
+    } catch (_err) {
+      toast.error("Failed to delete subject");
+    } finally {
+      setDeleteSubjectId(null);
+    }
+  };
+
   const getSubjectProgress = (subjectId: number) => {
     const chapters = allChapters.filter((c) => c.subjectId === subjectId);
     if (chapters.length === 0) return { total: 0, completed: 0, percent: 0 };
@@ -81,6 +106,9 @@ export default function SubjectsPage() {
       percent: Math.round((completed / chapters.length) * 100),
     };
   };
+
+  const deleteSubjectName =
+    subjects.find((s) => s.id === deleteSubjectId)?.name ?? "";
 
   if (subjectsLoading) {
     return (
@@ -106,7 +134,7 @@ export default function SubjectsPage() {
       </div>
 
       {subjects.length === 0 ? (
-        <div className="text-center py-16">
+        <div className="text-center py-16" data-ocid="subjects.empty_state">
           <BookOpen className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-foreground mb-2">
             No subjects yet
@@ -128,7 +156,7 @@ export default function SubjectsPage() {
             return (
               <Card
                 key={subject.id}
-                className="cursor-pointer hover:shadow-md transition-all hover:-translate-y-0.5 border-0 shadow-sm"
+                className="cursor-pointer hover:shadow-md transition-all hover:-translate-y-0.5 border-0 shadow-sm relative"
                 onClick={() =>
                   navigate({
                     to: "/subjects/$subjectId",
@@ -143,7 +171,21 @@ export default function SubjectsPage() {
                     >
                       {icon}
                     </div>
-                    <ChevronRight className="w-5 h-5 text-muted-foreground mt-1" />
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        data-ocid={`subjects.delete_button.${index + 1}`}
+                        className="p-1.5 rounded-md text-destructive hover:text-destructive hover:bg-destructive/10 transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleteSubjectId(subject.id);
+                        }}
+                        title="Delete subject"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                      <ChevronRight className="w-5 h-5 text-muted-foreground mt-0.5" />
+                    </div>
                   </div>
                   <h3 className="font-semibold text-foreground mb-1 leading-tight">
                     {subject.name}
@@ -206,6 +248,42 @@ export default function SubjectsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Subject Confirmation */}
+      <AlertDialog
+        open={deleteSubjectId !== null}
+        onOpenChange={(open) => !open && setDeleteSubjectId(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Subject</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete{" "}
+              <strong>&ldquo;{deleteSubjectName}&rdquo;</strong>? This will also
+              delete all its chapters, notes, questions, and flashcards. This
+              action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              data-ocid="subjects.delete.cancel_button"
+              onClick={() => setDeleteSubjectId(null)}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              data-ocid="subjects.delete.confirm_button"
+              onClick={handleDeleteSubject}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteSubjectMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : null}
+              Delete Subject
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

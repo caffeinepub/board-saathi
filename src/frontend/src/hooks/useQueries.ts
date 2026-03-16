@@ -103,6 +103,61 @@ export function useAddSubject() {
   });
 }
 
+export function useDeleteSubject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (subjectId: number) => {
+      const userId = uid();
+      // Get chapters belonging to this subject
+      const allChapters = getChapters(userId);
+      const subjectChapterIds = allChapters
+        .filter((c) => c.subjectId === subjectId)
+        .map((c) => c.id);
+
+      // Remove notes for those chapters
+      const allNotes = getNotes(userId);
+      saveNotes(
+        userId,
+        allNotes.filter((n) => !subjectChapterIds.includes(n.chapterId)),
+      );
+
+      // Remove questions for those chapters
+      const allQuestions = getQuestions(userId);
+      saveQuestions(
+        userId,
+        allQuestions.filter((q) => !subjectChapterIds.includes(q.chapterId)),
+      );
+
+      // Remove flashcards for this subject
+      const allFlashcards = getFlashcards(userId);
+      saveFlashcards(
+        userId,
+        allFlashcards.filter((f) => f.subjectId !== subjectId),
+      );
+
+      // Remove chapters for this subject
+      saveChapters(
+        userId,
+        allChapters.filter((c) => c.subjectId !== subjectId),
+      );
+
+      // Remove the subject itself
+      const allSubjects = getSubjects(userId);
+      saveSubjects(
+        userId,
+        allSubjects.filter((s) => s.id !== subjectId),
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["subjects"] });
+      queryClient.invalidateQueries({ queryKey: ["allChapters"] });
+      queryClient.invalidateQueries({ queryKey: ["chapters"] });
+      queryClient.invalidateQueries({ queryKey: ["allFlashcards"] });
+      queryClient.invalidateQueries({ queryKey: ["questionBank"] });
+    },
+  });
+}
+
 // ─── Chapters ─────────────────────────────────────────────────────────────────
 
 export function useGetChaptersForSubject(subjectId: number) {
@@ -139,6 +194,43 @@ export function useAddChapter() {
         queryKey: ["chapters", variables.subjectId],
       });
       queryClient.invalidateQueries({ queryKey: ["allChapters"] });
+    },
+  });
+}
+
+export function useDeleteChapter() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (chapterId: number) => {
+      const userId = uid();
+
+      // Remove notes for this chapter
+      const allNotes = getNotes(userId);
+      saveNotes(
+        userId,
+        allNotes.filter((n) => n.chapterId !== chapterId),
+      );
+
+      // Remove questions for this chapter
+      const allQuestions = getQuestions(userId);
+      saveQuestions(
+        userId,
+        allQuestions.filter((q) => q.chapterId !== chapterId),
+      );
+
+      // Remove the chapter itself
+      const allChapters = getChapters(userId);
+      saveChapters(
+        userId,
+        allChapters.filter((c) => c.id !== chapterId),
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["chapters"] });
+      queryClient.invalidateQueries({ queryKey: ["allChapters"] });
+      queryClient.invalidateQueries({ queryKey: ["notes"] });
+      queryClient.invalidateQueries({ queryKey: ["questions"] });
+      queryClient.invalidateQueries({ queryKey: ["questionBank"] });
     },
   });
 }
