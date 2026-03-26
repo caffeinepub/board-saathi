@@ -299,7 +299,7 @@ export default function FlashcardsPage() {
                 <SelectTrigger>
                   <SelectValue placeholder="Select chapter" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-h-60 overflow-y-auto">
                   {chaptersForSelected.map((c) => (
                     <SelectItem key={c.id} value={c.id.toString()}>
                       {c.name}

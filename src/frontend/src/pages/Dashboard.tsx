@@ -12,6 +12,7 @@ import {
 import {
   getCurrentUserAccount,
   getCurrentUserId,
+  getRevengeCornerPersons,
   getSRSCards,
   isGuest,
 } from "@/utils/localStorageService";
@@ -434,6 +435,26 @@ export default function Dashboard() {
             </Link>
           ))}
         </div>
+
+        {/* Revenge Corner Reminder */}
+        {(() => {
+          const rcPersons = getRevengeCornerPersons();
+          if (rcPersons.length === 0) return null;
+          return (
+            <div className="border border-red-200 dark:border-red-900 rounded-xl p-3 bg-red-50/50 dark:bg-red-950/20">
+              <div className="space-y-1">
+                {rcPersons.map((p) => (
+                  <p
+                    key={p.id}
+                    className="text-xs text-red-600 dark:text-red-400 font-medium text-center"
+                  >
+                    ⚠️ Don't forget the words of <strong>{p.name}</strong>
+                  </p>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Footer */}
         <footer className="text-center text-xs text-muted-foreground pt-4 border-t">

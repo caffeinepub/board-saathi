@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -7,10 +8,12 @@ import {
   Clock,
   Loader2,
   RotateCcw,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
   type LocalRevisionTask,
+  useDeleteRevisionTask,
   useGetAllChapters,
   useGetRevisionTasks,
   useGetSubjects,
@@ -66,6 +69,7 @@ export default function RevisionPage() {
   const { data: subjects = [] } = useGetSubjects();
   const { data: chapters = [] } = useGetAllChapters();
   const markCompleted = useMarkRevisionTaskCompleted();
+  const deleteTask = useDeleteRevisionTask();
 
   const _now = Date.now();
   const pending = tasks.filter((t) => !t.completed);
@@ -133,6 +137,17 @@ export default function RevisionPage() {
                 })}
               </div>
             </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-destructive hover:text-destructive flex-shrink-0"
+              onClick={() => deleteTask.mutate(task.id)}
+              disabled={deleteTask.isPending}
+              title="Delete revision task"
+              data-ocid="revision.delete_button"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </Button>
           </div>
         </CardContent>
       </Card>

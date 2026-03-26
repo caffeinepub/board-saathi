@@ -13,6 +13,7 @@ import React, { useEffect } from "react";
 import { InternetIdentityProvider } from "./hooks/useInternetIdentity";
 
 import Layout from "./components/Layout";
+import AIChatPage from "./pages/AIChatPage";
 import AttemptMockTestPage from "./pages/AttemptMockTestPage";
 import ChaptersPage from "./pages/ChaptersPage";
 import CreateMockTestPage from "./pages/CreateMockTestPage";
@@ -40,10 +41,15 @@ import {
 
 import AboutPage from "./pages/AboutPage";
 import AnswerEvaluatorPage from "./pages/AnswerEvaluatorPage";
+import ChapterDetailPage from "./pages/ChapterDetailPage";
+import DailyWordBoosterPage from "./pages/DailyWordBoosterPage";
+import DataTransferPage from "./pages/DataTransferPage";
 import ExamPaperPage from "./pages/ExamPaperPage";
 import FlashcardsPage from "./pages/FlashcardsPage";
 import HandwritingAnalyzerPage from "./pages/HandwritingAnalyzerPage";
 import MindMapPage from "./pages/MindMapPage";
+import OneTimePlannerPage from "./pages/OneTimePlannerPage";
+import RevengeCornerPage from "./pages/RevengeCornerPage";
 import SpacedRepetitionPage from "./pages/SpacedRepetitionPage";
 
 const queryClient = new QueryClient({
@@ -140,6 +146,18 @@ const chaptersRoute = createRoute({
   getParentRoute: () => studentLayoutRoute,
   path: "/subjects/$subjectId",
   component: ChaptersPage,
+});
+
+const chapterDetailRoute = createRoute({
+  getParentRoute: () => studentLayoutRoute,
+  path: "/subjects/$subjectId/chapters/$chapterId",
+  component: ChapterDetailPage,
+});
+
+const oneTimePlannerRoute = createRoute({
+  getParentRoute: () => studentLayoutRoute,
+  path: "/one-time-planner",
+  component: OneTimePlannerPage,
 });
 
 const questionBankRoute = createRoute({
@@ -268,6 +286,30 @@ const spacedRepRoute = createRoute({
   component: SpacedRepetitionPage,
 });
 
+const wordBoosterRoute = createRoute({
+  getParentRoute: () => studentLayoutRoute,
+  path: "/daily-word-booster",
+  component: DailyWordBoosterPage,
+});
+
+const revengeCornerRoute = createRoute({
+  getParentRoute: () => studentLayoutRoute,
+  path: "/revenge-corner",
+  component: RevengeCornerPage,
+});
+
+const dataTransferRoute = createRoute({
+  getParentRoute: () => studentLayoutRoute,
+  path: "/data-transfer",
+  component: DataTransferPage,
+});
+
+const aiChatRoute = createRoute({
+  getParentRoute: () => studentLayoutRoute,
+  path: "/ai-chat",
+  component: AIChatPage,
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   parentDashboardRoute,
@@ -275,6 +317,8 @@ const routeTree = rootRoute.addChildren([
     dashboardRoute,
     subjectsRoute,
     chaptersRoute,
+    chapterDetailRoute,
+    oneTimePlannerRoute,
     questionBankRoute,
     mockTestsRoute,
     createMockTestRoute,
@@ -296,6 +340,10 @@ const routeTree = rootRoute.addChildren([
     answerEvaluatorRoute,
     handwritingRoute,
     spacedRepRoute,
+    wordBoosterRoute,
+    revengeCornerRoute,
+    dataTransferRoute,
+    aiChatRoute,
   ]),
 ]);
 

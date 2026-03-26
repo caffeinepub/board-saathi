@@ -1,5 +1,14 @@
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -7,10 +16,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ChevronDown, ChevronUp, HelpCircle, Loader2 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  ChevronDown,
+  ChevronUp,
+  HelpCircle,
+  Loader2,
+  Plus,
+} from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import {
   type LocalQuestion,
+  useAddQuestion,
   useGetAllChapters,
   useGetQuestionBank,
   useGetSubjects,
@@ -52,6 +70,17 @@ export default function QuestionBankPage() {
   const [selectedChapterId, setSelectedChapterId] = useState<
     number | undefined
   >(undefined);
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [addSubjectId, setAddSubjectId] = useState<number | undefined>(
+    undefined,
+  );
+  const [addChapterId, setAddChapterId] = useState<number | undefined>(
+    undefined,
+  );
+  const [addQuestion, setAddQuestion] = useState("");
+  const [addAnswer, setAddAnswer] = useState("");
+  const [addSaving, setAddSaving] = useState(false);
+  const addQuestionMutation = useAddQuestion();
 
   const { data: subjects = [] } = useGetSubjects();
   const { data: allChapters = [] } = useGetAllChapters();
@@ -62,6 +91,9 @@ export default function QuestionBankPage() {
 
   const chaptersForSubject = selectedSubjectId
     ? allChapters.filter((c) => c.subjectId === selectedSubjectId)
+    : [];
+  const addChaptersForSubject = addSubjectId
+    ? allChapters.filter((c) => c.subjectId === addSubjectId)
     : [];
 
   const handleSubjectChange = (val: string) => {
@@ -78,6 +110,36 @@ export default function QuestionBankPage() {
       setSelectedChapterId(undefined);
     } else {
       setSelectedChapterId(Number.parseInt(val, 10));
+    }
+  };
+
+  const handleSaveQuestion = async () => {
+    if (!addQuestion.trim() || !addAnswer.trim()) {
+      toast.error("Question and answer are required");
+      return;
+    }
+    if (!addSubjectId || !addChapterId) {
+      toast.error("Please select a subject and chapter");
+      return;
+    }
+    setAddSaving(true);
+    try {
+      await addQuestionMutation.mutateAsync({
+        chapterId: addChapterId,
+        subjectId: addSubjectId,
+        questionText: addQuestion.trim(),
+        answer: addAnswer.trim(),
+      });
+      toast.success("Question added to bank!");
+      setAddDialogOpen(false);
+      setAddQuestion("");
+      setAddAnswer("");
+      setAddSubjectId(undefined);
+      setAddChapterId(undefined);
+    } catch {
+      toast.error("Failed to add question");
+    } finally {
+      setAddSaving(false);
     }
   };
 
@@ -117,7 +179,7 @@ export default function QuestionBankPage() {
           <SelectTrigger className="w-48">
             <SelectValue placeholder="All Chapters" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="max-h-60 overflow-y-auto">
             <SelectItem value="all">All Chapters</SelectItem>
             {chaptersForSubject.map((c) => (
               <SelectItem key={c.id} value={c.id.toString()}>
@@ -147,6 +209,116 @@ export default function QuestionBankPage() {
           ))}
         </div>
       )}
+      {/* FAB */}
+      <button
+        type="button"
+        onClick={() => setAddDialogOpen(true)}
+        className="fixed bottom-20 right-4 z-50 w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:bg-primary/90 transition-colors"
+        data-ocid="question_bank.add_question.open_modal_button"
+        aria-label="Add question"
+      >
+        <Plus className="w-6 h-6" />
+      </button>
+
+      {/* Add Question Dialog */}
+      <Dialog
+        open={addDialogOpen}
+        onOpenChange={(open) => {
+          setAddDialogOpen(open);
+          if (!open) {
+            setAddQuestion("");
+            setAddAnswer("");
+            setAddSubjectId(undefined);
+            setAddChapterId(undefined);
+          }
+        }}
+      >
+        <DialogContent data-ocid="question_bank.add_question.dialog">
+          <DialogHeader>
+            <DialogTitle>Add Question to Bank</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="text-xs mb-1.5 block">Subject</Label>
+              <select
+                className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+                value={addSubjectId?.toString() ?? ""}
+                onChange={(e) => {
+                  setAddSubjectId(
+                    e.target.value ? Number(e.target.value) : undefined,
+                  );
+                  setAddChapterId(undefined);
+                }}
+                data-ocid="question_bank.add_subject.select"
+              >
+                <option value="">Select Subject</option>
+                {subjects.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label className="text-xs mb-1.5 block">Chapter</Label>
+              <ScrollArea className="max-h-40 border rounded-md">
+                <select
+                  className="w-full px-3 py-2 text-sm bg-background"
+                  value={addChapterId?.toString() ?? ""}
+                  onChange={(e) =>
+                    setAddChapterId(
+                      e.target.value ? Number(e.target.value) : undefined,
+                    )
+                  }
+                  disabled={!addSubjectId}
+                  size={Math.min(5, addChaptersForSubject.length + 1)}
+                  data-ocid="question_bank.add_chapter.select"
+                >
+                  <option value="">Select Chapter</option>
+                  {addChaptersForSubject.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </ScrollArea>
+            </div>
+            <div>
+              <Label className="text-xs mb-1.5 block">Question *</Label>
+              <Textarea
+                value={addQuestion}
+                onChange={(e) => setAddQuestion(e.target.value)}
+                placeholder="Enter question"
+                rows={3}
+                data-ocid="question_bank.add_question.textarea"
+              />
+            </div>
+            <div>
+              <Label className="text-xs mb-1.5 block">Answer *</Label>
+              <Textarea
+                value={addAnswer}
+                onChange={(e) => setAddAnswer(e.target.value)}
+                placeholder="Enter answer"
+                rows={3}
+                data-ocid="question_bank.add_answer.textarea"
+              />
+            </div>
+            <Button
+              className="w-full"
+              onClick={handleSaveQuestion}
+              disabled={addSaving}
+              data-ocid="question_bank.add_question.submit_button"
+            >
+              {addSaving ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Plus className="w-4 h-4 mr-2" />
+              )}
+              Save Question
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

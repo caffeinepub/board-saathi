@@ -2,10 +2,14 @@ import { Button } from "@/components/ui/button";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useNavigate } from "@tanstack/react-router";
 import {
+  ArrowLeftRight,
   Bell,
+  BookMarked,
   BookOpen,
+  Bot,
   Brain,
   Calendar,
+  CalendarClock,
   CheckSquare,
   ClipboardList,
   FileText,
@@ -14,11 +18,13 @@ import {
   Info,
   Layers,
   LayoutDashboard,
+  Lock,
   LogOut,
   Menu,
   MessageSquare,
   PenLine,
   RotateCcw,
+  Sparkles,
   Target,
   TrendingUp,
   Trophy,
@@ -41,21 +47,26 @@ import {
   isGuest,
 } from "../utils/localStorageService";
 import {
-  flushQueue,
   initDataChangeListener,
   pruneStaleQueue,
-  pullAllData,
-  pushAllLocalData,
   setGlobalActor,
   syncBothWays,
 } from "../utils/syncService";
+import AIFloatingButton from "./AIFloatingButton";
 import BottomNavBar from "./BottomNavBar";
 import SyncStatus from "./SyncStatus";
 
 const NAV_LINKS = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard", exact: true },
+  { to: "/ai-chat", icon: Bot, label: "DEV Sir (AI)", exact: false },
   { to: "/subjects", icon: BookOpen, label: "Subjects", exact: false },
   { to: "/planner", icon: Calendar, label: "Planner", exact: false },
+  {
+    to: "/one-time-planner",
+    icon: CalendarClock,
+    label: "One-Time Planner",
+    exact: false,
+  },
   { to: "/reminders", icon: Bell, label: "Reminders", exact: false },
   { to: "/targets", icon: Target, label: "Targets", exact: false },
   {
@@ -90,6 +101,24 @@ const NAV_LINKS = [
     label: "Spaced Rep",
     exact: false,
   },
+  {
+    to: "/daily-word-booster",
+    icon: BookMarked,
+    label: "Word Booster",
+    exact: false,
+  },
+  {
+    to: "/revenge-corner",
+    icon: Lock,
+    label: "Revenge Corner",
+    exact: false,
+  },
+  {
+    to: "/data-transfer",
+    icon: ArrowLeftRight,
+    label: "Data Transfer",
+    exact: false,
+  },
   { to: "/profile", icon: User, label: "Profile", exact: false },
   { to: "/about", icon: Info, label: "About", exact: false },
 ];
@@ -108,6 +137,15 @@ export default function Layout() {
     initDataChangeListener();
     pruneStaleQueue();
   }, []);
+
+  // Re-render all components when a canister pull completes
+  useEffect(() => {
+    const handleDataPulled = () => {
+      queryClient.invalidateQueries();
+    };
+    window.addEventListener("bs:data-pulled", handleDataPulled);
+    return () => window.removeEventListener("bs:data-pulled", handleDataPulled);
+  }, [queryClient]);
 
   // Keep syncService's global actor reference up to date.
   // When actor becomes available: push local data first, then pull from canister.
@@ -132,7 +170,7 @@ export default function Layout() {
         const uid = getCurrentUserId();
         if (uid && uid !== "guest") {
           syncBothWays(uid, actor)
-            .then(() => queryClient.clear())
+            .then(() => queryClient.invalidateQueries())
             .catch(() => {});
         }
       }
@@ -151,18 +189,15 @@ export default function Layout() {
   }, [actor, queryClient]);
 
   // AUTO-REFRESH: When app comes to foreground, push local first then pull.
-  // This is the correct order — ensures local unsaved data reaches canister
-  // before we overwrite local with canister data.
   useEffect(() => {
     if (!actor) return;
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
         const uid = getCurrentUserId();
         if (uid && uid !== "guest" && navigator.onLine) {
-          // CRITICAL: push first, then pull — never pull-only
           syncBothWays(uid, actor)
             .then(() => {
-              queryClient.clear();
+              queryClient.invalidateQueries();
             })
             .catch(() => {});
         }
@@ -174,19 +209,16 @@ export default function Layout() {
     };
   }, [actor, queryClient]);
 
-  // PERIODIC SYNC: Every 60 seconds, push any pending local changes to canister.
+  // PERIODIC SYNC: Every 30 seconds, do a full bidirectional sync.
   useEffect(() => {
     if (!actor) return;
     const interval = setInterval(() => {
       if (!navigator.onLine) return;
       const uid = getCurrentUserId();
       if (uid && uid !== "guest") {
-        // Flush queue first (fast), then full push if queue was empty
-        flushQueue(actor)
-          .then(() => pushAllLocalData(uid, actor))
-          .catch(() => {});
+        syncBothWays(uid, actor).catch(() => {});
       }
-    }, 60_000);
+    }, 30_000);
     return () => clearInterval(interval);
   }, [actor]);
 
@@ -273,15 +305,27 @@ export default function Layout() {
             <Link
               key={to}
               to={to}
-              className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors ${
+                label === "DEV Sir (AI)"
+                  ? "border border-violet-200 dark:border-violet-800 bg-violet-50/50 dark:bg-violet-950/20 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/30"
+                  : ""
+              }`}
               activeProps={{
-                className:
-                  "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium bg-primary/10 text-primary",
+                className: `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium ${
+                  label === "DEV Sir (AI)"
+                    ? "bg-violet-500/20 text-violet-700 dark:text-violet-300 border border-violet-300 dark:border-violet-700"
+                    : "bg-primary/10 text-primary"
+                }`,
               }}
               activeOptions={{ exact }}
             >
-              <Icon className="w-4 h-4 flex-shrink-0" />
+              <Icon
+                className={`w-4 h-4 flex-shrink-0 ${label === "DEV Sir (AI)" ? "text-violet-500" : ""}`}
+              />
               <span className="flex-1">{label}</span>
+              {label === "DEV Sir (AI)" && (
+                <Sparkles className="w-3 h-3 text-violet-500 animate-pulse" />
+              )}
               {label === "Messages" && unreadCount > 0 && (
                 <span className="w-5 h-5 bg-destructive text-destructive-foreground text-[9px] font-bold rounded-full flex items-center justify-center">
                   {unreadCount > 9 ? "9+" : unreadCount}
@@ -386,16 +430,28 @@ export default function Layout() {
             <Link
               key={to}
               to={to}
-              className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors ${
+                label === "DEV Sir (AI)"
+                  ? "border border-violet-200 dark:border-violet-800 bg-violet-50/50 dark:bg-violet-950/20 text-violet-700 dark:text-violet-300"
+                  : ""
+              }`}
               activeProps={{
-                className:
-                  "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium bg-primary/10 text-primary",
+                className: `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium ${
+                  label === "DEV Sir (AI)"
+                    ? "bg-violet-500/20 text-violet-700 dark:text-violet-300 border border-violet-300 dark:border-violet-700"
+                    : "bg-primary/10 text-primary"
+                }`,
               }}
               activeOptions={{ exact }}
               onClick={() => setSidebarOpen(false)}
             >
-              <Icon className="w-4 h-4 flex-shrink-0" />
+              <Icon
+                className={`w-4 h-4 flex-shrink-0 ${label === "DEV Sir (AI)" ? "text-violet-500" : ""}`}
+              />
               <span className="flex-1">{label}</span>
+              {label === "DEV Sir (AI)" && (
+                <Sparkles className="w-3 h-3 text-violet-500 animate-pulse" />
+              )}
               {label === "Messages" && unreadCount > 0 && (
                 <span className="w-5 h-5 bg-destructive text-destructive-foreground text-[9px] font-bold rounded-full flex items-center justify-center">
                   {unreadCount > 9 ? "9+" : unreadCount}
@@ -491,6 +547,9 @@ export default function Layout() {
       <div className="lg:hidden">
         <BottomNavBar />
       </div>
+
+      {/* AI Floating Button - visible on all pages */}
+      {!guest && <AIFloatingButton />}
     </div>
   );
 }

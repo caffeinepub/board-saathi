@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   type LocalAchievement,
+  type LocalBook,
   type LocalChapter,
   type LocalFlashcard,
   type LocalMCQQuestion,
@@ -17,7 +18,9 @@ import {
   type LocalTestReport,
   type ParentMessage,
   type ParentReply,
+  deleteRevisionTask,
   getAchievements,
+  getBooks,
   getChapters,
   getChildMessages,
   getCurrentUserId,
@@ -36,6 +39,7 @@ import {
   getTestAttempts,
   markMessageAsRead as markMessageAsReadLS,
   markParentReplyAsSeen as markParentReplyAsSeenLS,
+  saveBooks,
   saveChapters,
   saveFlashcards,
   saveMockTests,
@@ -181,11 +185,24 @@ export function useAddChapter() {
       subjectId,
       name,
       weightage,
-    }: { subjectId: number; name: string; weightage: number }) => {
+      bookId,
+    }: {
+      subjectId: number;
+      name: string;
+      weightage: number;
+      bookId?: number;
+    }) => {
       const userId = uid();
       const chapters = getChapters(userId);
       const id = getNextId(userId, "chapter");
-      chapters.push({ id, subjectId, name, weightage, completed: false });
+      chapters.push({
+        id,
+        subjectId,
+        name,
+        weightage,
+        completed: false,
+        bookId,
+      });
       saveChapters(userId, chapters);
       return id;
     },
@@ -273,6 +290,26 @@ export function useGetNotesForChapter(chapterId: number) {
   });
 }
 
+export function useGetNotesForSubject(
+  subjectId: number,
+  chapters: LocalChapter[],
+) {
+  const chapterIds = new Set(
+    chapters.filter((c) => c.subjectId === subjectId).map((c) => c.id),
+  );
+  return useQuery<LocalNote[]>({
+    queryKey: ["notes", "subject", subjectId],
+    queryFn: () => getNotes(uid()).filter((n) => chapterIds.has(n.chapterId)),
+  });
+}
+
+export function useGetQuestionsForSubject(subjectId: number) {
+  return useQuery<LocalQuestion[]>({
+    queryKey: ["questions", "subject", subjectId],
+    queryFn: () => getQuestions(uid()).filter((q) => q.subjectId === subjectId),
+  });
+}
+
 export function useAddNote() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -288,10 +325,8 @@ export function useAddNote() {
       saveNotes(userId, notes);
       return id;
     },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({
-        queryKey: ["notes", variables.chapterId],
-      });
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notes"] });
     },
   });
 }
@@ -345,10 +380,8 @@ export function useAddQuestion() {
       saveQuestions(userId, questions);
       return id;
     },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({
-        queryKey: ["questions", variables.chapterId],
-      });
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["questions"] });
       queryClient.invalidateQueries({ queryKey: ["questionBank"] });
     },
   });
@@ -842,6 +875,19 @@ export function useMarkRevisionTaskCompleted() {
   });
 }
 
+export function useDeleteRevisionTask() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (taskId: number) => {
+      deleteRevisionTask(uid(), taskId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["revisionTasks"] });
+      queryClient.invalidateQueries({ queryKey: ["pendingRevisionTasks"] });
+    },
+  });
+}
+
 // ─── Study Streak ─────────────────────────────────────────────────────────────
 
 export function useGetStudyStreak() {
@@ -1041,4 +1087,108 @@ export function useGetParentReplies(currentParentUsername: string | null) {
   };
 
   return { ...query, unseenCount, markAsSeen };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BOOK GROUP HOOKS
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type { LocalBook };
+
+export function useGetBooksForSubject(subjectId: number) {
+  return useQuery<LocalBook[]>({
+    queryKey: ["books", subjectId],
+    queryFn: () => getBooks(uid()).filter((b) => b.subjectId === subjectId),
+  });
+}
+
+export function useAddBook() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      subjectId,
+      name,
+    }: { subjectId: number; name: string }) => {
+      const userId = uid();
+      const books = getBooks(userId);
+      const id = getNextId(userId, "book");
+      const newBook: LocalBook = {
+        id,
+        subjectId,
+        name: name.trim(),
+        createdAt: Date.now(),
+      };
+      books.push(newBook);
+      saveBooks(userId, books);
+      return id;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["books", variables.subjectId],
+      });
+    },
+  });
+}
+
+export function useDeleteBook() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      bookId,
+      subjectId: _subjectId,
+    }: { bookId: number; subjectId: number }) => {
+      const userId = uid();
+      // Remove book
+      const books = getBooks(userId);
+      saveBooks(
+        userId,
+        books.filter((b) => b.id !== bookId),
+      );
+      // Unassign chapters from this book
+      const chapters = getChapters(userId);
+      saveChapters(
+        userId,
+        chapters.map((c) =>
+          c.bookId === bookId ? { ...c, bookId: undefined } : c,
+        ),
+      );
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["books", variables.subjectId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["chapters", variables.subjectId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["allChapters"] });
+    },
+  });
+}
+
+export function useAssignChapterToBook() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      chapterId,
+      bookId,
+      subjectId: _subjectId,
+    }: {
+      chapterId: number;
+      bookId: number | undefined;
+      subjectId: number;
+    }) => {
+      const userId = uid();
+      const chapters = getChapters(userId);
+      saveChapters(
+        userId,
+        chapters.map((c) => (c.id === chapterId ? { ...c, bookId } : c)),
+      );
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["chapters", variables.subjectId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["allChapters"] });
+    },
+  });
 }

@@ -65,6 +65,7 @@ export const SYNC_DATA_TYPES = [
   "handwritingAnalyses",
   "answerEvaluations",
   "examPapers",
+  "books",
 ] as const;
 
 // Data types that may contain large image blobs — strip imageData before canister upload
@@ -328,10 +329,51 @@ export async function pullAllData(
       `[SyncService] Pulled ${succeeded}/${typesToPull.length} data types`,
     );
     localStorage.setItem(LAST_SYNC_KEY, Date.now().toString());
+
+    // Special case: wordBooster uses a different key format
+    try {
+      const wbRemote = await actor.getMyData("wordBooster");
+      if (wbRemote && wbRemote.trim() !== "") {
+        const wbKey = `wordBooster_${userId}`;
+        const wbLocal = localStorage.getItem(wbKey);
+        if (!wbLocal || wbLocal.trim() === "") {
+          localStorage.setItem(wbKey, wbRemote);
+        } else {
+          // Keep local if it exists (more recent), but push local to canister
+          try {
+            const localParsed = JSON.parse(wbLocal);
+            const remoteParsed = JSON.parse(wbRemote);
+            // Use whichever has more progress (higher masteredCount)
+            const localMastered = localParsed.masteredCount || 0;
+            const remoteMastered = remoteParsed.masteredCount || 0;
+            if (remoteMastered > localMastered) {
+              localStorage.setItem(wbKey, wbRemote);
+            }
+          } catch {
+            // keep local
+          }
+        }
+      } else {
+        // Nothing on canister — push local up
+        const wbKey = `wordBooster_${userId}`;
+        const wbRaw = localStorage.getItem(wbKey);
+        if (wbRaw && wbRaw.trim() !== "") {
+          actor.saveMyData("wordBooster", wbRaw).catch(() => {});
+        }
+      }
+    } catch (e) {
+      console.warn("[SyncService] Failed to pull wordBooster:", e);
+    }
   } catch (e) {
     console.warn("[SyncService] pullAllData failed:", e);
   } finally {
     setIsPulling(false);
+    // Notify all components that fresh data is available in localStorage
+    try {
+      window.dispatchEvent(new CustomEvent("bs:data-pulled"));
+    } catch {
+      /* ignore */
+    }
   }
 }
 
@@ -367,6 +409,17 @@ export async function pushAllLocalData(
     `[SyncService] Pushed ${succeeded}/${SYNC_DATA_TYPES.length} data types`,
   );
   localStorage.setItem(LAST_SYNC_KEY, Date.now().toString());
+
+  // Special case: wordBooster uses a different key format
+  try {
+    const wbKey = `wordBooster_${userId}`;
+    const wbRaw = localStorage.getItem(wbKey);
+    if (wbRaw && wbRaw.trim() !== "") {
+      await actor.saveMyData("wordBooster", wbRaw);
+    }
+  } catch (e) {
+    console.warn("[SyncService] Failed to push wordBooster:", e);
+  }
 }
 
 /**

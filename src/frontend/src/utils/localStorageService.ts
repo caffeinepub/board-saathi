@@ -258,6 +258,7 @@ export interface LocalChapter {
   name: string;
   weightage: number;
   completed: boolean;
+  bookId?: number;
 }
 
 export function getChapters(userId: string): LocalChapter[] {
@@ -394,6 +395,7 @@ export interface LocalPlannerTask {
   date: number;
   startTime: string;
   completed: boolean;
+  bookId?: number;
 }
 
 export function getPlannerTasks(userId: string): LocalPlannerTask[] {
@@ -433,6 +435,7 @@ export interface LocalTarget {
   description: string;
   deadline: number;
   completed: boolean;
+  bookId?: number;
 }
 
 export function getTargets(userId: string): LocalTarget[] {
@@ -450,6 +453,7 @@ export interface LocalRevisionTask {
   subjectId: number;
   dueDate: number;
   completed: boolean;
+  bookId?: number;
   revisionNumber: number;
   plannerTaskId?: number;
 }
@@ -1168,4 +1172,159 @@ export function saveAnswerEvaluations(
   evals: LocalAnswerEvaluation[],
 ): void {
   setData(userId, "answerEvaluations", evals);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BOOK GROUPS (per subject, local only)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface LocalBook {
+  id: number;
+  subjectId: number;
+  name: string;
+  createdAt: number;
+}
+
+export function getBooks(userId: string): LocalBook[] {
+  return getData<LocalBook[]>(userId, "books", []);
+}
+
+export function saveBooks(userId: string, books: LocalBook[]): void {
+  setData(userId, "books", books);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REVENGE CORNER (local only, password-protected)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface RevengeCornerPerson {
+  id: string;
+  name: string;
+  createdAt: number;
+}
+
+export interface RevengeCornerEntry {
+  id: string;
+  personId: string;
+  type: "text" | "image" | "video" | "recording";
+  content: string; // text content or base64 data URL
+  caption: string;
+  createdAt: number;
+}
+
+const RC_PASSWORD_KEY = "revengeCorner_password";
+const RC_PERSONS_KEY = "revengeCorner_persons";
+const RC_ENTRIES_KEY = "revengeCorner_entries";
+
+export function getRevengeCornerPassword(): string | null {
+  return localStorage.getItem(RC_PASSWORD_KEY);
+}
+
+export function setRevengeCornerPassword(password: string): void {
+  // Simple hash: base64 of reversed string + length
+  const hash = btoa(
+    password.split("").reverse().join("") + password.length.toString(),
+  );
+  localStorage.setItem(RC_PASSWORD_KEY, hash);
+}
+
+export function verifyRevengeCornerPassword(password: string): boolean {
+  const stored = getRevengeCornerPassword();
+  if (!stored) return false;
+  const hash = btoa(
+    password.split("").reverse().join("") + password.length.toString(),
+  );
+  return hash === stored;
+}
+
+export function getRevengeCornerPersons(): RevengeCornerPerson[] {
+  try {
+    return JSON.parse(localStorage.getItem(RC_PERSONS_KEY) ?? "[]");
+  } catch {
+    return [];
+  }
+}
+
+export function saveRevengeCornerPersons(persons: RevengeCornerPerson[]): void {
+  localStorage.setItem(RC_PERSONS_KEY, JSON.stringify(persons));
+}
+
+export function getRevengeCornerEntries(): RevengeCornerEntry[] {
+  try {
+    return JSON.parse(localStorage.getItem(RC_ENTRIES_KEY) ?? "[]");
+  } catch {
+    return [];
+  }
+}
+
+export function saveRevengeCornerEntries(entries: RevengeCornerEntry[]): void {
+  localStorage.setItem(RC_ENTRIES_KEY, JSON.stringify(entries));
+}
+
+// ─── Mock Test Drafts ─────────────────────────────────────────────────────────
+
+export interface LocalMockTestDraft {
+  id: number;
+  name: string;
+  subjectId: number;
+  questions: LocalMCQQuestion[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export function getMockTestDrafts(userId: string): LocalMockTestDraft[] {
+  try {
+    const raw = localStorage.getItem(`bs_${userId}_mockTestDrafts`);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveMockTestDrafts(
+  userId: string,
+  drafts: LocalMockTestDraft[],
+): void {
+  localStorage.setItem(`bs_${userId}_mockTestDrafts`, JSON.stringify(drafts));
+}
+
+export function addMockTestDraft(
+  userId: string,
+  draft: Omit<LocalMockTestDraft, "id" | "createdAt" | "updatedAt">,
+): LocalMockTestDraft {
+  const drafts = getMockTestDrafts(userId);
+  const id = Date.now();
+  const newDraft: LocalMockTestDraft = {
+    ...draft,
+    id,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+  drafts.push(newDraft);
+  saveMockTestDrafts(userId, drafts);
+  return newDraft;
+}
+
+export function updateMockTestDraft(
+  userId: string,
+  draftId: number,
+  update: Partial<Omit<LocalMockTestDraft, "id" | "createdAt">>,
+): void {
+  const drafts = getMockTestDrafts(userId);
+  const idx = drafts.findIndex((d) => d.id === draftId);
+  if (idx !== -1) {
+    drafts[idx] = { ...drafts[idx], ...update, updatedAt: Date.now() };
+    saveMockTestDrafts(userId, drafts);
+  }
+}
+
+export function deleteMockTestDraft(userId: string, draftId: number): void {
+  const drafts = getMockTestDrafts(userId).filter((d) => d.id !== draftId);
+  saveMockTestDrafts(userId, drafts);
+}
+
+// ─── Delete Revision Task ────────────────────────────────────────────────────
+export function deleteRevisionTask(userId: string, taskId: number): void {
+  const tasks = getRevisionTasks(userId).filter((t) => t.id !== taskId);
+  saveRevisionTasks(userId, tasks);
 }

@@ -11,10 +11,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, Loader2, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, FileText, Loader2, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useCreateMockTest, useGetSubjects } from "../hooks/useQueries";
+import {
+  addMockTestDraft,
+  getCurrentUserId,
+} from "../utils/localStorageService";
 
 interface MCQQuestionForm {
   id: number;
@@ -73,6 +77,30 @@ export default function CreateMockTestPage() {
         return { ...q, options: newOptions };
       }),
     );
+  };
+
+  const handleSaveAsDraft = () => {
+    if (!testName.trim()) {
+      toast.error("Please enter a test name");
+      return;
+    }
+    if (!subjectId) {
+      toast.error("Please select a subject");
+      return;
+    }
+    const userId = getCurrentUserId() || "guest";
+    addMockTestDraft(userId, {
+      name: testName.trim(),
+      subjectId: Number.parseInt(subjectId, 10),
+      questions: questions.map((q) => ({
+        id: q.id,
+        questionText: q.questionText.trim() || "(empty)",
+        options: q.options.map((o) => o.trim() || ""),
+        correctOption: q.correctOption,
+      })),
+    });
+    toast.success("Saved as draft!");
+    navigate({ to: "/mock-tests" });
   };
 
   const handleCreate = async () => {
@@ -235,6 +263,15 @@ export default function CreateMockTestPage() {
         >
           <Plus className="w-4 h-4" />
           Add Question
+        </Button>
+
+        <Button
+          variant="outline"
+          onClick={handleSaveAsDraft}
+          className="w-full gap-2"
+        >
+          <FileText className="w-4 h-4" />
+          Save as Draft
         </Button>
 
         <Button

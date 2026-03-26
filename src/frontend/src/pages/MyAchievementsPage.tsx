@@ -3,8 +3,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Award,
+  BookMarked,
   BookOpen,
+  ClipboardList,
   Clock,
+  CreditCard,
   Flame,
   HelpCircle,
   Star,
@@ -15,6 +18,12 @@ import {
   useGetPersonalBest,
   useGetStudyStreak,
 } from "../hooks/useQueries";
+import {
+  getCurrentUserId,
+  getFlashcards,
+  getMockTests,
+  getTestAttempts,
+} from "../utils/localStorageService";
 
 function formatTime(seconds: number): string {
   if (!seconds || seconds === 0) return "—";
@@ -66,6 +75,15 @@ export default function MyAchievementsPage() {
     );
   }
 
+  const userId = getCurrentUserId() || "guest";
+  const wbRaw = localStorage.getItem(`wordBooster_${userId}`);
+  const wbState = wbRaw ? JSON.parse(wbRaw) : null;
+  const mockTestsCount = getMockTests(userId).length;
+  const testAttempts = getTestAttempts(userId).length;
+  const flashcardsLearned = getFlashcards(userId).filter(
+    (f) => f.learned,
+  ).length;
+
   const statCards = [
     {
       label: "Chapters Completed",
@@ -92,6 +110,34 @@ export default function MyAchievementsPage() {
       label: "Fastest Test",
       value: formatTime(personalBest?.fastestTestTime ?? 0),
       icon: Clock,
+      color: "text-green-500",
+      bg: "bg-green-50",
+    },
+    {
+      label: "Words Mastered",
+      value: String(wbState?.masteredWordIds?.length ?? 0),
+      icon: BookMarked,
+      color: "text-violet-500",
+      bg: "bg-violet-50",
+    },
+    {
+      label: "Word Streak",
+      value: `${wbState?.streak ?? 0} days`,
+      icon: Flame,
+      color: "text-amber-500",
+      bg: "bg-amber-50",
+    },
+    {
+      label: "Tests Created",
+      value: `${mockTestsCount} tests · ${testAttempts} attempts`,
+      icon: ClipboardList,
+      color: "text-blue-500",
+      bg: "bg-blue-50",
+    },
+    {
+      label: "Flashcards Learned",
+      value: String(flashcardsLearned),
+      icon: CreditCard,
       color: "text-green-500",
       bg: "bg-green-50",
     },
