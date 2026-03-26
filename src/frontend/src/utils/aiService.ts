@@ -1,5 +1,5 @@
 // AI Service - Gemini Integration for Board Saathi
-// API key is stored here only and never exposed in UI
+// API key is loaded from environment variable (VITE_GEMINI_API_KEY)
 
 import {
   type LocalChapter,
@@ -29,8 +29,8 @@ import {
 import { getCurrentUserId } from "./localStorageService";
 
 // ─── Private Config ────────────────────────────────────────────────────────
-const _k = ["AIzaSyDBbCa2uPfK8yJs3HUWDFC3YiqAvlbG9IE"].join("");
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${_k}`;
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string;
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 export interface AIChatMessage {
@@ -429,14 +429,47 @@ export async function sendMessageToAI(
     },
   };
 
-  const response = await fetch(GEMINI_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(requestBody),
-  });
+  let response: Response;
+  try {
+    response = await fetch(GEMINI_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody),
+    });
+  } catch (networkError) {
+    // Full network error (no internet, CORS, blocked by SW, etc.)
+    console.error("[DEV Sir] Network error calling Gemini API:", networkError);
+    throw new Error(
+      `Network error: Could not reach Gemini API. Check internet connection. Details: ${
+        networkError instanceof Error
+          ? networkError.message
+          : String(networkError)
+      }`,
+    );
+  }
 
   if (!response.ok) {
-    throw new Error(`Gemini API error: ${response.status}`);
+    let errorBody = "";
+    try {
+      errorBody = await response.text();
+    } catch {
+      /* ignore */
+    }
+    console.error(
+      `[DEV Sir] Gemini API HTTP error ${response.status}:`,
+      errorBody,
+    );
+    throw new Error(
+      `Gemini API error ${response.status} (${
+        response.status === 403
+          ? "Forbidden — check API key permissions"
+          : response.status === 400
+            ? "Bad Request"
+            : response.status === 429
+              ? "Rate limit exceeded"
+              : response.statusText
+      }). Body: ${errorBody}`,
+    );
   }
 
   const data = await response.json();
@@ -588,14 +621,22 @@ export async function getAITip(
       body: JSON.stringify(requestBody),
     });
 
-    if (!response.ok) throw new Error("API error");
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => "");
+      console.error(
+        `[DEV Sir] getAITip HTTP error ${response.status}:`,
+        errorBody,
+      );
+      throw new Error(`HTTP ${response.status}`);
+    }
 
     const data = await response.json();
     const rawText: string =
       data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
     const { cleanText } = parseAction(rawText);
     return cleanText;
-  } catch {
+  } catch (err) {
+    console.error("[DEV Sir] getAITip error:", err);
     return "Keep practicing and stay consistent. Small daily progress leads to big results!";
   }
 }
